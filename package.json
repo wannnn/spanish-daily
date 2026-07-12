@@ -1,0 +1,18 @@
+{
+  "name": "spanish-daily",
+  "version": "0.1.0",
+  "description": "A personal Spanish learning automation system that generates a daily vocabulary lesson.",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "@types/node": "^26.1.1",
+    "typescript": "^7.0.2"
+  }
+}
