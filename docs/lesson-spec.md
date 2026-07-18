@@ -6,8 +6,7 @@
 The core product of this system is not vocabulary selection — it is the **daily
 lesson**: a complete piece of Spanish teaching material generated for one
 vocabulary entry each day. This document defines the contract for that layer: what
-the generator receives, what it must produce, and how the future Claude API prompt
-is structured.
+the generator receives, what it must produce, and how its prompt is structured.
 
 Pipeline position:
 
@@ -56,7 +55,7 @@ distinct roles, and only two of them affect the generated content:
 |---|---|---|
 | `word` | The canonical Spanish word to teach. | Yes — drives all content. |
 | `pos` | Part of speech (from the vocabulary POS enum). | Yes — selects which "Word forms" template applies. |
-| `id` | Correlation key: which entry this lesson belongs to. | No — passes through to the lesson's metadata and the learning record. |
+| `id` | Correlation key: which entry this lesson belongs to. | No — supplied to the generator, copied verbatim into the frontmatter, and carried into the learning record. |
 | `order` | Curriculum position. | No — irrelevant to content; not sent to the generator. |
 
 **No additional input metadata is introduced.** Each candidate was considered and
@@ -77,9 +76,9 @@ rejected as an input for the first implementation:
   and omitted otherwise (§2, Word basics). They are not inputs.
 
 The generator therefore requires exactly `word` and `pos` to produce teaching
-content. `id` is **pipeline metadata** used for association and traceability
-(linking the lesson to its entry and learning record); it is not a generation
-input and never influences the content.
+content. `id`, `date`, and the lesson schema version are **pipeline metadata**
+used for association and traceability: they are supplied so the generator can
+write the frontmatter correctly, and they never influence what the lesson says.
 
 ## 2. Lesson output structure
 
@@ -95,8 +94,9 @@ Chinese strings given below.
 ### Frontmatter
 
 The canonical lesson document carries a minimal YAML frontmatter block for
-traceability and idempotent republishing. It is assembled by the pipeline, not by
-the generator (see §5, Output constraints):
+traceability and idempotent republishing. Its values are supplied by the
+pipeline; the generator writes them out exactly as given and never invents them
+(see §5, Output constraints):
 
 ```
 ---
@@ -240,8 +240,13 @@ are excluded until and unless they are explicitly requested as a future feature.
 
 ## 5. Prompt architecture
 
-This describes the structure of the future Claude API request. It is a design, not
-an implementation — no API call is built here.
+This describes how the generator is instructed. It is a design, not an
+implementation — no workflow or prompt file is built here.
+
+The prompt, together with this document, is the **primary constraint on teaching
+quality**. The pipeline's validation is an acceptance gate for well-formed
+canonical data, not a critic of the material (`docs/architecture.md` §4) — so
+whatever makes a lesson good has to come from the contract and the prompt.
 
 **System prompt — responsibilities**
 
@@ -269,16 +274,23 @@ an implementation — no API call is built here.
 
 **Output constraints**
 
-- The generator produces the Markdown lesson **body**: the fixed sections of §2, in
-  order. It does not produce the frontmatter.
-- The canonical document's frontmatter is assembled by the pipeline after
-  generation. `id`, `date`, and `lesson_schema_version` are pipeline/canonical
-  metadata, not values the generator decides — consistent with §1, where `id` is
-  correlation metadata rather than a generation input. See `docs/architecture.md`
-  §4 for where assembly happens.
+- The generator writes **one complete canonical lesson document**: the
+  frontmatter of §2 followed by the five fixed sections of §2, in order. It
+  writes the whole file, not a fragment handed back for assembly.
+- The frontmatter values are **supplied to the generator**, not chosen by it.
+  `id`, `word`, `pos`, `date`, and `lesson_schema_version` come from the task
+  context the pipeline prepares; the generator copies them exactly. It must not
+  invent, alter, or omit any of them — consistent with §1, where `id` is
+  correlation metadata rather than a generation input.
+- The document is written at exactly the one path the task context names, and no
+  other file is touched.
 - Complete conjugation tables for verbs; representative examples per §3.
 - Deterministic structure (fixed headings) so the result can be validated and
   projected without fragile parsing.
+
+The pipeline parses and validates the finished document before accepting it; how
+generation is invoked, and what the acceptance gate checks, belong to
+`docs/architecture.md` §4–§5 rather than to this contract.
 
 **Quality requirements**
 
@@ -290,12 +302,13 @@ an implementation — no API call is built here.
 - Irregularities explained by pattern, not merely listed.
 
 **Deferred implementation details** (decided when the layer is built, not now):
-model selection (favour the most capable model for accuracy), whether to use
-extended thinking, streaming, and whether a structural validator or a structured
-output format is used to guarantee the section contract. The first implementation
-is expected to emit fixed-heading Markdown validated by a lightweight structural
-check; full structured (JSON) output is a future option, not a current
-requirement.
+how generation is invoked and which model runs it. Those are settled in
+`docs/architecture.md` §5 and pinned during the scheduling milestone, not here —
+this document constrains what a lesson must contain, not how it is produced.
+
+What is settled: the generator writes fixed-heading Markdown, and the pipeline
+accepts it through a structural check on the finished document. A structured
+(JSON) output format is a future option, not a current requirement.
 
 ## 6. Long-term considerations
 

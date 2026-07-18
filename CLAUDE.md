@@ -2,7 +2,7 @@
 
 ## Purpose
 
-`spanish-daily` is a personalized AI Spanish learning **content** system. Each day it selects a vocabulary word, uses the Claude API to generate a complete teaching lesson for it, stores the lesson and the learning record in Git, projects the lesson to Notion for reading, and sends a notification through Telegram.
+`spanish-daily` is a personalized AI Spanish learning **content** system. Each day it selects a vocabulary word, has a Claude Code GitHub Action write a complete teaching lesson for it, stores the lesson and the learning record in Git, projects the lesson to Notion for reading, and sends a notification through Telegram.
 
 The vocabulary selection logic is the **core data layer, not the product**. The product is the daily lesson.
 
@@ -29,7 +29,7 @@ Do not duplicate the contents of those documents here. A short summary with a re
 Full detail in `docs/architecture.md`. The essentials an agent must not violate:
 
 - This is a **content** system, not a Notion-based system. `lessons/**/*.md` is the canonical lesson content; Notion, Telegram, and any future consumer are projections that must be re-derivable from Git.
-- The daily pipeline has three stages: **Stage 1 CANONICAL** (select → generate → validate → write lesson + history → one Git commit + push), **Stage 2 PROJECTION** (Notion), **Stage 3 NOTIFICATION** (Telegram).
+- The daily pipeline has three stages: **Stage 1 CANONICAL** (Node prepares a task context → a Claude Code Action writes the lesson file → Node accepts it, appends history, and commits + pushes both in one commit), **Stage 2 PROJECTION** (Notion), **Stage 3 NOTIFICATION** (Telegram).
 - **Only Stage 1 defines whether a day is complete.** A projection or notification failure never rolls back, invalidates, or regenerates committed canonical data.
 - The Git repository is the single source of truth. Progress is always *derived* from committed data — never from a status flag or status table.
 - `domain/` is pure and never names a platform. `pipeline/` is the composition root. Platform-specific knowledge stays inside its own adapter.
@@ -45,7 +45,7 @@ Full detail in `docs/architecture.md`. The essentials an agent must not violate:
 
 **Planned integrations, not yet added**
 
-- Claude API for lesson generation
+- Claude Code GitHub Action for lesson generation (an action, not an API client — the application depends on no Anthropic SDK and reads no `ANTHROPIC_API_KEY`)
 - Notion, Telegram, and GitHub Actions
 
 Adding any of these is part of the milestone that needs it, never earlier.

@@ -31,35 +31,49 @@ It is not architecture and not a contract. It never decides how the system works
     `io/historyStore.ts`
 - [x] **Read-only daily selection CLI** — `e5527de`
   - `cli/today.ts`
-- [x] **Canonical Lesson model and lesson store** — `60427bc`
-  - `domain/lesson.ts`, `io/lessonStore.ts`
+- [x] **Canonical Lesson model** — `60427bc`
+  - `domain/lesson.ts`. The `io/lessonStore.ts` written in the same commit was
+    removed during the architecture correction below — the generation action
+    writes the lesson file, so nothing in Node writes one.
 
 ## Current milestone
 
-None in progress. Claude API work has **not** started; no dependency has been
-added and `src/integrations/` does not exist.
+**Architecture correction for Claude Code Action generation** — in progress, not
+yet reviewed or committed.
 
-The next milestone covers only:
+Lesson generation does **not** go through the Anthropic Messages API. A Claude
+Code GitHub Action writes the canonical lesson file directly. Settled:
 
-- the Claude generator adapter
-- prompt construction
-- generation input `{ word, pos }` — nothing else reaches the generator
-- body-only output, with no frontmatter
-- validation of the generated body against the lesson content contract
+- Generation runs through `anthropics/claude-code-action`, not `@anthropic-ai/sdk`.
+- Authentication uses a `CLAUDE_CODE_OAUTH_TOKEN` from `claude setup-token` —
+  the application holds no API key and reads no `ANTHROPIC_API_KEY`.
+- The agent writes one complete canonical lesson file: frontmatter and all five
+  sections. It never touches history, vocabulary, code, docs, or any other
+  lesson, and it never commits.
+- Node prepares a deterministic task context, then accepts or rejects the
+  finished file, appends history, and commits + pushes both in one commit.
+- The prompt and the lesson contract are the primary constraint on teaching
+  quality; the Node validator is an objective acceptance gate only — no semantic
+  scoring, no second AI review.
 
-Explicitly out of scope for that milestone:
+Done in this milestone: the abandoned Messages API work was rolled back (the SDK
+dependency, the adapter, its generated-body validator, and `io/lessonStore.ts`,
+which lost its only production consumer). `docs/architecture.md`,
+`docs/lesson-spec.md`, and `CLAUDE.md` were synchronized.
 
-- history append
-- Git commit / push orchestration
-- Notion
-- Telegram
-- GitHub Actions
+Explicitly **not** implemented here: the workflow YAML, the action prompt, the
+prepare and finalize CLIs, history append, commit and push, and any token setup.
+
+## Next milestone
+
+The Node-side prepare and finalize contracts — the smallest vertical slice of the
+corrected Stage 1 — before any workflow YAML is written.
 
 ## Remaining milestones
 
-- [ ] Claude lesson generation adapter and generated-body validation
-- [ ] History append and canonical write preparation
-- [ ] Stage 1 orchestration and Git commit + push
+- [ ] Stage 1 prepare: selection → task context
+- [ ] Stage 1 finalize: acceptance gate, history append, commit + push
+- [ ] Claude Code Action workflow and generation prompt
 - [ ] Notion projection
 - [ ] Telegram notification
 - [ ] GitHub Actions scheduling
@@ -70,7 +84,10 @@ Undecided, and each will block the milestone it belongs to.
 
 | Question | Blocks |
 |---|---|
-| Which Claude model, and whether to use extended thinking (`docs/lesson-spec.md` §5 defers both to implementation) | Claude generation |
+| The `anthropics/claude-code-action` version to pin | Workflow |
+| The model argument the action is given | Workflow |
+| The exact tool-restriction syntax that keeps the agent to one file | Workflow |
+| `CLAUDE_CODE_OAUTH_TOKEN` setup and the repository secret name | Workflow |
 | Seed vocabulary content — the word list is the maintainer's decision (`docs/vocabulary-spec.md` §1); a small hand-verified set is enough to exercise the pipeline | End-to-end runs |
 | Whether `history.jsonl` missing means "first run" outside the CLI, where `cli/today.ts` currently makes that call at its own composition boundary | Stage 1 orchestration |
 | How Stage 1 handles an unclean local repository — handle it or refuse to run (`docs/architecture.md` §8) | Stage 1 orchestration |
@@ -84,7 +101,8 @@ do not accumulate history here.
 
 - Latest commit: `60427bc` on `main`, pushed
 - `npm run typecheck` — passes
-- `npm test` — 306 tests, 306 pass, 0 fail
+- `npm test` — see the correction milestone above; the lesson-store suite was
+  removed with its module
 - Working tree expected clean
 - Dependencies: `typescript` and `@types/node` only
 

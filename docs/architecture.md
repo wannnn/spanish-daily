@@ -93,21 +93,26 @@ src/
   io/                          filesystem and Git boundary — thin, no decisions
     vocabularyStore.ts
     historyStore.ts
-    lessonStore.ts
     git.ts                     (planned)
 
   integrations/                one file per external platform (all planned)
-    claude.ts                  lesson generation
     notion.ts                  lesson projection
     telegram.ts                notification
 
   pipeline/                    (planned)
-    runDaily.ts                composition root
+    prepare.ts                 selection → task context
+    finalize.ts                acceptance → history → commit + push
 
   cli/
     today.ts                   read-only: print today's selection
-    daily.ts                   (planned) the full Stage 1 run
+    prepare.ts                 (planned) emit today's task context
+    finalize.ts                (planned) accept the generated lesson and commit
 ```
+
+**There is no `integrations/claude.ts`.** Lesson generation does not go through
+an API client this application owns — a Claude Code GitHub Action writes the
+lesson file directly (§5, Stage 1). Nothing under `io/` writes lesson files
+either, for the same reason.
 
 **Domain constants live with the contract they belong to**, not in an
 application config module. `TIMEZONE` is part of the date contract and lives in
@@ -125,9 +130,9 @@ such as canonical paths actually need a home.
 - `pipeline/` may depend on everything. It is the **composition root** and the
   only place in the system permitted to name an adapter by name.
 
-Adapters are named after their platform (`claude.ts`, `notion.ts`,
-`telegram.ts`), not after a generic role. An honest name keeps the boundary
-visible and makes "add another consumer" obviously additive.
+Adapters are named after their platform (`notion.ts`, `telegram.ts`), not after
+a generic role. An honest name keeps the boundary visible and makes "add another
+consumer" obviously additive.
 
 Clock, filesystem, and network are injected at the edges. The domain layer does
 not know they exist.
@@ -138,7 +143,7 @@ not know they exist.
 |---|---|---|---|
 | Which words, in what order | `vocabulary.json` (Git) | **human only** | The system reads it and never writes it. See `docs/vocabulary-spec.md`. |
 | What has been learned | `history.jsonl` (Git) | system, append-only | The learned set is *derived* from it; never stored separately. |
-| Lesson content | `lessons/**/*.md` (Git) | system, written once | Canonical. Notion is its projection. |
+| Lesson content | `lessons/**/*.md` (Git) | the generation action, written once | Canonical, and accepted by finalize before it is committed. Notion is its projection. |
 | Notion pages | **not a source of truth** | system | Disposable and rebuildable. |
 | Telegram messages | stateless | system | Carry no state whatsoever. |
 | Today's date | derived from `Asia/Taipei` (§11) | — | Never read from the host locale. |
@@ -194,43 +199,60 @@ lessonRelativePath(metadata: LessonMetadata): string  // pure; throws
 static site generator, a search index, a mobile app — reads `lessons/**/*.md`
 through this one function rather than reimplementing the format.
 
-### Who assembles the frontmatter
+### Who writes the lesson file
 
-The generator produces the **body only**. Frontmatter is assembled afterwards by
-`renderLesson` from pipeline-known facts.
+**A Claude Code GitHub Action writes the whole canonical file — frontmatter and
+all.** The application does not call a generation API and does not assemble the
+document from a returned string.
 
 ```
-claude.ts          →  body only (## 基本資訊 … ## 延伸學習)
-domain/lesson      →  validateLessonBody(body)    ← structural check
-domain/lesson      →  renderLesson({ metadata, body })  ← adds frontmatter
-io/lessonStore     →  write to lessons/YYYY/…
+Node prepare       →  task context: id, word, pos, date, schema version,
+                      and the single allowed target path
+Claude Code Action →  reads docs/lesson-spec.md and writes exactly that file
+Node finalize      →  parse, verify, append history, commit + push
 ```
 
-This is what makes `docs/lesson-spec.md` §1 — that `id` is pipeline metadata and
-never a generation input — structurally true rather than merely documented. The
-generator receives `{ word, pos }` and cannot reference `id`, `date`, or `order`
-because it never has them, so it cannot fabricate them.
+This still keeps `docs/lesson-spec.md` §1 true — the metadata is not the
+generator's to invent. The difference is *how* it is enforced: the task context
+states the exact `id`, `date`, and target path, and finalize rejects the file if
+what was written disagrees with it. Enforcement moved from "the generator never
+receives these values" to "the generator is given them and is checked against
+them".
 
-### Two kinds of validation
+`renderLesson` is therefore not part of the daily write path. It stays because
+finalize uses it as the canonical-form check —
+`renderLesson(parseLesson(document)) === document` proves the file is in
+canonical serialized form and not merely parseable.
 
-These are separate concerns and must not be merged into one validator.
+### Validation is an acceptance gate, not a critic
 
-**Canonical structural validation** — `validateLessonBody(body)`. Answers only:
-is this a well-formed canonical lesson body? It checks the five section headings
-present in the fixed order, no duplicated or extra `##` sections, no frontmatter
-in the body, and a non-empty body. A `##` line inside a fenced code block is not
-a section; an unclosed fence fails, because the structure cannot then be
-determined. It takes no `pos` and makes no judgement about the teaching content.
-Every consumer of a canonical lesson relies on this, so it applies equally to a
-freshly generated lesson and to one read back out of Git years later.
+Finalize asks one question: *is this file acceptable as canonical data?* It
+answers with objective checks only.
 
-**Generated-output contract validation** — not yet defined. Whether a generated
-body satisfies the *content* contract of `docs/lesson-spec.md` — a complete
-conjugation table for a verb, examples spanning the major tenses, no fabricated
-CEFR — is a different question, asked only of untrusted model output and only at
-generation time. It belongs to the generation adapter's milestone and will be its
-own function with its own name; it is deliberately not designed here, and
-`validateLessonBody` must not grow into it.
+**What it checks** — the expected file exists; `parseLesson` succeeds; the
+metadata equals the task context exactly; the lesson schema version is the one
+this build supports; `validateLessonBody` passes; the document is in canonical
+form; and the working tree's changed-file set contains nothing but that one
+lesson file.
+
+**What it must never check** — whether the Spanish is correct, whether a
+conjugation is right, whether the Chinese reads naturally, whether the material
+is deep enough, or how good the examples are. None of that is decidable from the
+text. A validator that guesses at it produces false rejections that throw away
+good work, which is worse than not checking.
+
+**Teaching quality is the prompt's job, not the validator's.** The lesson
+contract and the generation prompt are what make a lesson good; the validator
+only keeps malformed data out of Git. There is no semantic scoring and no
+second AI review pass.
+
+**Canonical structural validation** — `validateLessonBody(body)` — is the piece
+that every consumer relies on, not just generation: it checks the five section
+headings present in the fixed order, no duplicated or extra `##` sections, no
+frontmatter in the body, and a non-empty body. A `##` line inside a fenced code
+block is not a section; an unclosed fence fails, because the structure cannot
+then be determined. It applies equally to a freshly written lesson and to one
+read back out of Git years later.
 
 ## 5. Pipeline stages
 
@@ -242,22 +264,70 @@ The only stage that defines whether a day is complete.
 |---|---|
 | **Input** | `vocabulary.json`, `history.jsonl`, injected clock |
 | **Output** | `lessons/YYYY/YYYY-MM-DD-{id}.md` and one appended `history.jsonl` record, in **one commit + push** |
-| **Steps** | select → generate → validate → render → write both files → commit → push |
+| **Steps** | **prepare** (select → task context) → **generate** (Claude Code Action writes the file) → **finalize** (accept → append history → commit → push) |
 | **Idempotency** | a history record for today exists ⇒ the entire stage is skipped |
-| **Failure** | abort, non-zero exit. Validation failure writes **nothing** — an incomplete lesson never reaches Git. |
+| **Failure** | abort, non-zero exit. A rejected lesson **never reaches history and never gets committed**. |
 
-Steps up to and including selection touch no network. "Which word is today's" is
-decided by pure functions and can be answered offline at zero cost.
+Prepare touches no network. "Which word is today's" is decided by pure functions
+and can be answered offline at zero cost.
 
-**Ordering rule:** the orchestrator completes generation and *every* validation
-before it performs any canonical write. Nothing reaches the filesystem until the
-lesson is known to be complete and well-formed.
+#### The three steps
+
+**Prepare** — Node. Loads the vocabulary and history, computes today in
+`Asia/Taipei`, and runs selection. On `replay` or `exhausted` it stops and the
+generation step never runs. On `selected` it emits a **task context**: the `id`,
+`word`, `pos`, `date`, lesson schema version, and the single repository-relative
+path the lesson may be written to. Every value in it is derived, not negotiated.
+
+**Generate** — a Claude Code GitHub Action. It reads `docs/lesson-spec.md` and
+writes exactly one file, at exactly the path the task context names, complete
+with frontmatter and the five sections. It may run the repository's own
+validation command and fix its own output.
+
+It must not: touch `history.jsonl`, the vocabulary, application code,
+documentation, or any other lesson; commit or push; decide which word today is;
+alter any value in the task context; or ask the user anything.
+
+**Finalize** — Node. Applies the acceptance gate of §4, and only if every check
+passes appends the history record, stages the lesson and the history together,
+commits, and pushes.
+
+**Ordering rule:** nothing is appended to history and nothing is committed until
+the generated file has passed every acceptance check. A rejected lesson leaves
+history untouched, so the day stays unfinished and re-running is safe.
 
 The two canonical writes — the lesson file and the history record — must land in
-**one commit**, and that is a property the orchestrator establishes. `lessonStore`
-persists a lesson and nothing else; it offers no cross-file transaction and does
-not know that a history record exists. The invariant belongs to Stage 1 as a
-whole, not to any single store.
+**one commit**, and that is finalize's responsibility. No single store provides a
+cross-file transaction; the invariant belongs to Stage 1 as a whole.
+
+#### Claude is an agent here, not an API client
+
+- Generation runs through the `anthropics/claude-code-action` GitHub Action.
+- Authentication uses a `CLAUDE_CODE_OAUTH_TOKEN` produced by
+  `claude setup-token`, held as a repository secret.
+- The application does **not** depend on `@anthropic-ai/sdk` and does **not**
+  read `ANTHROPIC_API_KEY`. There is no generation client in `src/`.
+- The model is selected through the action's own arguments, not in application
+  code.
+- Interactive questioning must be disabled — the run is unattended, and a
+  question would hang it rather than surface a decision.
+- The agent never commits, never pushes, and never records completion. Only
+  finalize does.
+
+The exact action version, model identifier, and tool-restriction syntax are
+deliberately not pinned here. They are verified against the official
+documentation during the GitHub Actions milestone rather than guessed now.
+
+#### What the workflow file may and may not do
+
+The workflow orchestrates three steps rather than invoking one command, but it
+stays a shell: it wires up the environment and calls the external action.
+
+Every business rule — selection, replay and exhaustion, the expected target
+path, metadata comparison, the allowed changed-file set, history append, the
+single commit, the push, and what counts as done — is enforced by Node functions
+and commands. None of it may be reimplemented in YAML, where it would be
+untestable and would drift from the code that owns it.
 
 **Selection algorithm** — `domain/selection.ts`, a pure function of
 `(vocabulary, history, today)`:
@@ -357,8 +427,8 @@ guarded by committed state, Stage 2 by an upsert, Stage 3 by a one-shot conditio
 | Vocabulary validation | none | abort with a locating error message | ≠0 | normal once fixed |
 | History parse | none | abort — treated as corruption | ≠0 | needs manual repair |
 | No word left to select | none | log "curriculum complete" | 0 | same |
-| Claude generation | none | abort | ≠0 | regenerates |
-| **Lesson validation** | **none** — validated before writing | abort, nothing written | ≠0 | regenerates |
+| Lesson generation (the action) | a file may be left in the working tree | abort; nothing is appended or committed | ≠0 | regenerates |
+| **Lesson acceptance** | a rejected file may be left in the working tree | abort; **history untouched, nothing committed** | ≠0 | regenerates |
 | Commit or push | local only — see below | abort | ≠0 | see below |
 | **Notion projection** | canonical data already committed | abort, **no rollback** | ≠0 | **re-projects from Git; does not call Claude** |
 | **Telegram** | learning record already complete | warn only | **0** | not re-sent |
@@ -394,9 +464,10 @@ for the Stage 1 orchestration milestone, to be made when the code forces it.
 ### domain → pipeline → adapter
 
 - `domain/` never names a platform. Not in code, not in types, not in identifiers.
-- `pipeline/runDaily.ts` imports `notion.ts` directly. This is **deliberate**: it
-  is the composition root, and eliminating that import with a registry or
-  dependency injection is exactly the premature abstraction §1 forbids.
+- The pipeline modules import their adapters directly — `finalize.ts` will name
+  `notion.ts`, not resolve it. This is **deliberate**: they are the composition
+  root, and eliminating that import with a registry or dependency injection is
+  exactly the premature abstraction §1 forbids.
 - **An adapter may depend on the canonical Lesson model. The canonical Lesson
   model may never depend on an adapter.**
 
@@ -435,14 +506,8 @@ existing adapters. Nothing is built in advance to enable this.
 Each adapter is a module of plain functions. There is no shared interface, no base
 class, and no registry.
 
-### `integrations/claude.ts`
-
-```ts
-generateLesson(input: { word: string, pos: string }): Promise<string>   // body only
-```
-
-The signature is the enforcement mechanism for `docs/lesson-spec.md` §1: the
-generator transforms and never curates, so it receives no `id` and no `order`.
+Lesson generation has no adapter here — it is a GitHub Action, not a client
+this application owns (§5).
 
 ### `integrations/notion.ts`
 
