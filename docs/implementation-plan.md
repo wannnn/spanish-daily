@@ -33,41 +33,43 @@ It is not architecture and not a contract. It never decides how the system works
   - `cli/today.ts`
 - [x] **Canonical Lesson model** — `60427bc`
   - `domain/lesson.ts`. The `io/lessonStore.ts` written in the same commit was
-    removed during the architecture correction below — the generation action
-    writes the lesson file, so nothing in Node writes one.
+    removed by the architecture correction below — the generation action writes
+    the lesson file, so nothing in Node writes one.
+- [x] **Architecture correction for Claude Code Action generation** — `a19f05b`
+  - Lesson generation is a Claude Code GitHub Action, not an Anthropic Messages
+    API client. The abandoned API work and `io/lessonStore.ts` were removed, and
+    `docs/architecture.md`, `docs/lesson-spec.md`, and `CLAUDE.md` were
+    synchronized. Settled: generation runs through `anthropics/claude-code-action`
+    authenticated by a `CLAUDE_CODE_OAUTH_TOKEN`; the agent writes one complete
+    canonical lesson file and never touches history, never commits, and never
+    decides the word; Node prepares the task context, accepts or rejects the
+    result, appends history, and commits + pushes both in one commit; the prompt
+    and the lesson contract constrain teaching quality, while the Node validator
+    is an objective acceptance gate only.
 
 ## Current milestone
 
-**Architecture correction for Claude Code Action generation** — in progress, not
-yet reviewed or committed.
+**Node prepare and finalize contracts** — not started.
 
-Lesson generation does **not** go through the Anthropic Messages API. A Claude
-Code GitHub Action writes the canonical lesson file directly. Settled:
+The smallest vertical slice of the corrected Stage 1, in Node only:
 
-- Generation runs through `anthropics/claude-code-action`, not `@anthropic-ai/sdk`.
-- Authentication uses a `CLAUDE_CODE_OAUTH_TOKEN` from `claude setup-token` —
-  the application holds no API key and reads no `ANTHROPIC_API_KEY`.
-- The agent writes one complete canonical lesson file: frontmatter and all five
-  sections. It never touches history, vocabulary, code, docs, or any other
-  lesson, and it never commits.
-- Node prepares a deterministic task context, then accepts or rejects the
-  finished file, appends history, and commits + pushes both in one commit.
-- The prompt and the lesson contract are the primary constraint on teaching
-  quality; the Node validator is an objective acceptance gate only — no semantic
-  scoring, no second AI review.
+- **prepare** — produce the deterministic task context for today: the `id`,
+  `word`, `pos`, `date`, lesson schema version, and the single repository-relative
+  path the lesson may be written to. On `replay` or `exhausted` it produces no
+  task context.
+- **finalize** — verify the lesson file the generation step wrote: that it parses,
+  that its metadata equals the task context exactly, that it is in canonical form,
+  and that the working tree's changed-file set contains nothing but that one file.
 
-Done in this milestone: the abandoned Messages API work was rolled back (the SDK
-dependency, the adapter, its generated-body validator, and `io/lessonStore.ts`,
-which lost its only production consumer). `docs/architecture.md`,
-`docs/lesson-spec.md`, and `CLAUDE.md` were synchronized.
+Explicitly out of scope for this milestone:
 
-Explicitly **not** implemented here: the workflow YAML, the action prompt, the
-prepare and finalize CLIs, history append, commit and push, and any token setup.
-
-## Next milestone
-
-The Node-side prepare and finalize contracts — the smallest vertical slice of the
-corrected Stage 1 — before any workflow YAML is written.
+- the GitHub Actions workflow YAML
+- the Claude Code Action prompt
+- `CLAUDE_CODE_OAUTH_TOKEN` setup
+- history append
+- the Git commit and push implementation
+- Notion
+- Telegram
 
 ## Remaining milestones
 
@@ -99,12 +101,17 @@ Undecided, and each will block the milestone it belongs to.
 State as of the latest completed milestone. Replace it when a milestone closes;
 do not accumulate history here.
 
-- Latest commit: `60427bc` on `main`, pushed
+- Latest commit: `a19f05b` on `main`, pushed
 - `npm run typecheck` — passes
-- `npm test` — see the correction milestone above; the lesson-store suite was
-  removed with its module
+- `npm run build` — passes
+- `npm test` — 291 tests, 291 pass, 0 fail (38 suites)
 - Working tree expected clean
-- Dependencies: `typescript` and `@types/node` only
+- Dependencies: `typescript` and `@types/node` only — no runtime dependency
+
+Known and deliberately unfixed: `package.json` says version `0.1.0` while
+`package-lock.json` records `1.0.0`. Any npm command will rewrite the lockfile to
+match. It is left for its own chore commit rather than riding along with
+unrelated work.
 
 ## Handoff
 
