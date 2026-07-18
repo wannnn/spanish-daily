@@ -14,7 +14,12 @@ their own contracts:
 | `docs/vocabulary-spec.md` | The vocabulary data contract: entry schema, identity, ordering, POS, validation. |
 | `docs/lesson-spec.md` | The lesson content and generation contract: input contract, Markdown structure, prompt architecture. |
 | **this document** | Application architecture, pipeline stages, state semantics, boundaries. |
-| `CLAUDE.md` | Agent context, development principles, rules for changes, current project status. |
+| `docs/implementation-plan.md` | What is built so far, the current milestone, and open questions. |
+| `CLAUDE.md` | Agent context, development principles, rules for changes. |
+
+This document describes the system's **intended shape**, not its current extent.
+Parts of it are not implemented yet, and it does not track that —
+`docs/implementation-plan.md` does.
 
 ## 1. Architectural principles
 
@@ -70,36 +75,47 @@ defining an interface for platforms*. The latter only relocates the coupling.
  pure functions   all I/O and external services
 ```
 
+This is the **target** structure: where each responsibility belongs once the
+whole pipeline exists. It is not a description of the repository as it stands —
+several of these modules are not written yet. For what exists today and what is
+next, see `docs/implementation-plan.md`.
+
 ```
 src/
-  config.ts                    core constants only: TIMEZONE, paths,
-                               LESSON_SCHEMA_VERSION
-
   domain/                      pure functions — no I/O, no clock, no network
     types.ts                   VocabularyEntry, HistoryRecord, Lesson
-    date.ts                    Asia/Taipei date calculation
+    date.ts                    Asia/Taipei date calculation; owns TIMEZONE
     vocabulary.ts              validation per docs/vocabulary-spec.md §5
     history.ts                 JSONL parsing, learned-set derivation
     selection.ts               word selection
-    lesson.ts                  canonical Lesson model: parse, render, validate
+    lesson.ts                  canonical Lesson model; owns LESSON_SCHEMA_VERSION
 
   io/                          filesystem and Git boundary — thin, no decisions
     vocabularyStore.ts
     historyStore.ts
     lessonStore.ts
-    git.ts
+    git.ts                     (planned)
 
-  integrations/                one file per external platform
+  integrations/                one file per external platform (all planned)
     claude.ts                  lesson generation
     notion.ts                  lesson projection
     telegram.ts                notification
 
-  pipeline/
+  pipeline/                    (planned)
     runDaily.ts                composition root
 
   cli/
-    daily.ts
+    today.ts                   read-only: print today's selection
+    daily.ts                   (planned) the full Stage 1 run
 ```
+
+**Domain constants live with the contract they belong to**, not in an
+application config module. `TIMEZONE` is part of the date contract and lives in
+`domain/date.ts`; `LESSON_SCHEMA_VERSION` is part of the lesson contract and
+lives in `domain/lesson.ts`. Neither is environment configuration — neither ever
+varies by environment, so neither belongs in one. A `config.ts` is not required
+by this architecture and should be introduced only if application-level values
+such as canonical paths actually need a home.
 
 **Dependency rule (the one rule that must not bend):**
 
@@ -162,29 +178,31 @@ The file content is the frontmatter and fixed sections defined by
 interface:
 
 ```ts
+type LessonMetadata = { id, word, pos, date, lessonSchemaVersion }
 type Lesson = {
-  metadata: { id, word, pos, date, lessonSchemaVersion }
+  metadata: LessonMetadata
   body: string        // Markdown: the fixed sections of lesson-spec §2
 }
 
-parse(document: string): Lesson       // pure
-render(lesson: Lesson): string        // pure
-validateBody(body: string, pos: string): void   // pure; throws
+parseLesson(document: string): Lesson                 // pure
+renderLesson(lesson: Lesson): string                  // pure
+validateLessonBody(body: string): void                // pure; throws
+lessonRelativePath(metadata: LessonMetadata): string  // pure; throws
 ```
 
-`parse` is the system's real portability asset: every future consumer — a static
-site generator, a search index, a mobile app — reads `lessons/**/*.md` through
-this one function rather than reimplementing the format.
+`parseLesson` is the system's real portability asset: every future consumer — a
+static site generator, a search index, a mobile app — reads `lessons/**/*.md`
+through this one function rather than reimplementing the format.
 
 ### Who assembles the frontmatter
 
 The generator produces the **body only**. Frontmatter is assembled afterwards by
-`domain/lesson.render` from pipeline-known facts.
+`renderLesson` from pipeline-known facts.
 
 ```
 claude.ts          →  body only (## 基本資訊 … ## 延伸學習)
-domain/lesson      →  validateBody(body, pos)     ← validates untrusted output
-domain/lesson      →  render({ metadata, body })  ← adds frontmatter
+domain/lesson      →  validateLessonBody(body)    ← structural check
+domain/lesson      →  renderLesson({ metadata, body })  ← adds frontmatter
 io/lessonStore     →  write to lessons/YYYY/…
 ```
 
@@ -193,13 +211,26 @@ never a generation input — structurally true rather than merely documented. Th
 generator receives `{ word, pos }` and cannot reference `id`, `date`, or `order`
 because it never has them, so it cannot fabricate them.
 
-Validation runs on the generator's output, before assembly. The assembled
-document is produced by our own pure function and is not re-validated.
+### Two kinds of validation
 
-`validateBody` checks: the five section headings present in the fixed order; no
-extra `##` sections; no frontmatter in the body (the generator emitting one means
-it disobeyed its contract); for `pos === 'verb'`, all eight required tense/mood
-sub-tables present; no empty section.
+These are separate concerns and must not be merged into one validator.
+
+**Canonical structural validation** — `validateLessonBody(body)`. Answers only:
+is this a well-formed canonical lesson body? It checks the five section headings
+present in the fixed order, no duplicated or extra `##` sections, no frontmatter
+in the body, and a non-empty body. A `##` line inside a fenced code block is not
+a section; an unclosed fence fails, because the structure cannot then be
+determined. It takes no `pos` and makes no judgement about the teaching content.
+Every consumer of a canonical lesson relies on this, so it applies equally to a
+freshly generated lesson and to one read back out of Git years later.
+
+**Generated-output contract validation** — not yet defined. Whether a generated
+body satisfies the *content* contract of `docs/lesson-spec.md` — a complete
+conjugation table for a verb, examples spanning the major tenses, no fabricated
+CEFR — is a different question, asked only of untrusted model output and only at
+generation time. It belongs to the generation adapter's milestone and will be its
+own function with its own name; it is deliberately not designed here, and
+`validateLessonBody` must not grow into it.
 
 ## 5. Pipeline stages
 
@@ -218,25 +249,48 @@ The only stage that defines whether a day is complete.
 Steps up to and including selection touch no network. "Which word is today's" is
 decided by pure functions and can be answered offline at zero cost.
 
-**Selection algorithm** — `domain/selection.ts`, a pure function of
-`(vocabulary, history)`:
+**Ordering rule:** the orchestrator completes generation and *every* validation
+before it performs any canonical write. Nothing reaches the filesystem until the
+lesson is known to be complete and well-formed.
 
-- Pick the **unlearned word with the lowest `order`**. The curated `order` defines
-  the learning sequence (`docs/vocabulary-spec.md` §2).
-- No randomness and no shuffle. The same inputs always yield the same word.
+The two canonical writes — the lesson file and the history record — must land in
+**one commit**, and that is a property the orchestrator establishes. `lessonStore`
+persists a lesson and nothing else; it offers no cross-file transaction and does
+not know that a history record exists. The invariant belongs to Stage 1 as a
+whole, not to any single store.
+
+**Selection algorithm** — `domain/selection.ts`, a pure function of
+`(vocabulary, history, today)`:
+
+```ts
+type SelectionResult =
+  | { kind: 'selected'; entry: VocabularyEntry }
+  | { kind: 'replay'; record: HistoryRecord }
+  | { kind: 'exhausted' }
+```
+
+- **Replay wins first.** If the history already holds a record for today, that
+  record is returned and nothing else is selected. The record is returned rather
+  than a vocabulary entry, so replay holds even when the recorded `id` has since
+  retired from the vocabulary — that is **not an error** (§3).
+- Otherwise, pick the **unlearned word with the lowest `order`**. The curated
+  `order` defines the learning sequence (`docs/vocabulary-spec.md` §2).
+- No randomness and no shuffle. The same inputs always yield the same result, and
+  the order of the vocabulary array is irrelevant.
 - Duplicates are prevented structurally: the candidate set is the complement of
   the learned set, so a learned word cannot be selected again.
 - An `id` present in the history but absent from the vocabulary stays in the
-  learned set and is **not an error**. Words can be removed from the curriculum;
-  what has been learned does not become unlearned.
-- Returns nothing when the curriculum is exhausted; the run then exits 0.
+  learned set. Words can be removed from the curriculum; what has been learned
+  does not become unlearned.
+- `exhausted` is an ordinary success, not an error: it is a named variant, never
+  `null`, `undefined`, or a thrown exception. The run then exits 0.
 - Spaced review is a future feature and no part of this (§13).
 
 ### Stage 2 — PROJECTION
 
 | | |
 |---|---|
-| **Input** | the canonical Lesson, read from Git via `domain/lesson.parse`, plus adapter configuration |
+| **Input** | the canonical Lesson, read from Git via `parseLesson`, plus adapter configuration |
 | **Output** | a Notion page (side effect); returns a URL held in memory only |
 | **Idempotency** | the adapter's own upsert, keyed on `id` |
 | **Failure** | non-zero exit so the scheduler reports failure — but **no rollback**, and committed canonical data is never touched or regenerated |
@@ -305,13 +359,35 @@ guarded by committed state, Stage 2 by an upsert, Stage 3 by a one-shot conditio
 | No word left to select | none | log "curriculum complete" | 0 | same |
 | Claude generation | none | abort | ≠0 | regenerates |
 | **Lesson validation** | **none** — validated before writing | abort, nothing written | ≠0 | regenerates |
-| Commit or push | local files only (lost with the runner) | abort | ≠0 | regenerates |
+| Commit or push | local only — see below | abort | ≠0 | see below |
 | **Notion projection** | canonical data already committed | abort, **no rollback** | ≠0 | **re-projects from Git; does not call Claude** |
 | **Telegram** | learning record already complete | warn only | **0** | not re-sent |
 
 The core invariant: **the history record is the sole definition of "done."** Until
 it is pushed, the day is unfinished and re-running is safe. After it is pushed,
 the day is finished and nothing downstream can undo it.
+
+### When the commit or the push fails
+
+"Not pushed" means the canonical remote does not have the day, so the day is not
+complete. It does **not** mean nothing happened locally: the working tree may
+hold written files, and a local commit may already exist.
+
+What becomes of that local state depends on where the run happened:
+
+- **On an ephemeral CI runner**, the workspace is discarded when the job ends, so
+  unpushed work disappears and the next scheduled run starts from the remote.
+- **On a developer machine**, the working tree and any local commit persist. The
+  next run therefore starts from a repository that is *not* in the same state as
+  a fresh clone.
+
+Stage 1 must therefore either handle an unclean local state or refuse to run
+until it is resolved — and say which, out loud. It must never write canonical
+data on top of a state it has not accounted for.
+
+Which of those two it does is **not decided here**, and no retry, rebase, or
+conflict-resolution behaviour is designed in this document. That is a decision
+for the Stage 1 orchestration milestone, to be made when the code forces it.
 
 ## 9. Boundaries
 
@@ -331,8 +407,8 @@ equivalent for any other adapter live **only inside that adapter file**. They mu
 never reach `vocabulary.json`, `history.jsonl`, the canonical lesson content, the
 domain layer, or any core pipeline decision.
 
-Adapter configuration is read inside its own adapter. `config.ts` holds core
-constants only; it must not accumulate knowledge of external platforms.
+Adapter configuration is read inside its own adapter, never gathered into a
+shared module that would then know every platform at once.
 
 ### The reverse leak to guard against
 
@@ -351,7 +427,7 @@ a defect in the converter, not in the content.
 
 A static site generator, search index, or mobile app content consumer is added as
 a new file under `integrations/` that reads `lessons/**/*.md` through
-`domain/lesson.parse`. No change to canonical data, the domain layer, or the
+`parseLesson`. No change to canonical data, the domain layer, or the
 existing adapters. Nothing is built in advance to enable this.
 
 ## 10. Adapter contracts
@@ -438,14 +514,9 @@ Each is a separate, explicit future feature. None is designed for now.
 
 ## 14. Open decisions
 
-Recorded so they are not silently assumed. None has been decided.
-
-- Seed vocabulary entries: content is chosen by the human maintainer
-  (`docs/vocabulary-spec.md` §1). A small hand-verified set validates the pipeline
-  before the dataset is expanded.
-- The Claude model and whether to use extended thinking
-  (`docs/lesson-spec.md` §5 lists these as deferred to implementation).
-- The Git identity used for commits in GitHub Actions.
+Questions that are still open change as the work proceeds, so they are tracked in
+`docs/implementation-plan.md` rather than here. This document records decisions
+that have been made.
 
 ## Changelog
 

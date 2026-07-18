@@ -17,9 +17,12 @@ Every design decision has exactly one owning document. Read the owner before cha
 | `docs/vocabulary-spec.md` | Vocabulary data contract: entry schema, identity, `order`, POS enum, validation rules, loader behaviour. |
 | `docs/lesson-spec.md` | Lesson content and generation contract: input contract, Markdown structure, example-sentence rules, prompt architecture. |
 | `docs/architecture.md` | Application architecture: layers, pipeline stages, completion semantics, idempotency, failure and retry behaviour, adapter boundaries. |
-| `CLAUDE.md` (this file) | Agent context, development principles, rules for changes, current project status. |
+| `docs/implementation-plan.md` | What is built so far, the current milestone, open questions, and the handoff state. |
+| `CLAUDE.md` (this file) | Agent context, development principles, rules for changes. |
 
 Do not duplicate the contents of those documents here. A short summary with a reference is fine; a second full copy will drift.
+
+**Before starting implementation work, read `docs/implementation-plan.md` for the current milestone and handoff state.** This file deliberately records no progress: it holds only what stays true between milestones.
 
 ## Architecture in brief
 
@@ -31,34 +34,21 @@ Full detail in `docs/architecture.md`. The essentials an agent must not violate:
 - The Git repository is the single source of truth. Progress is always *derived* from committed data — never from a status flag or status table.
 - `domain/` is pure and never names a platform. `pipeline/` is the composition root. Platform-specific knowledge stays inside its own adapter.
 
-## Current stage
-
-The repository is initialized. The vocabulary contract, the lesson contract, and the application architecture are all settled and documented. There is no application code, no `src/` directory, and no integrations.
-
-Implementation order:
-
-1. `config.ts`, domain types, vocabulary validation, a small hand-verified seed `vocabulary.json`
-2. Date calculation, history parsing, word selection (all pure)
-3. Vocabulary and history stores, plus a CLI that prints today's word — the first working slice, with no external services
-4. Lesson model, Claude generation, lesson store, Git commit — Stage 1 complete
-5. Notion projection — Stage 2
-6. Telegram notification — Stage 3
-7. GitHub Actions schedule
-
-Build these in order. Do not jump ahead to Claude, Notion, Telegram, or Actions.
-
 ## Technology stack
 
-**In use now**
+**In use**
 
 - Node.js with TypeScript (strict mode, ES2022, NodeNext modules, ESM)
 - npm for package management
 - Dev dependencies limited to `typescript` and `@types/node`
 - Tests use the built-in `node:test` — no test framework dependency
 
-**Planned, not yet added**
+**Planned integrations, not yet added**
 
-- Claude API for lesson generation; Notion, Telegram, and GitHub Actions integrations
+- Claude API for lesson generation
+- Notion, Telegram, and GitHub Actions
+
+Adding any of these is part of the milestone that needs it, never earlier.
 
 Implementation details not covered by the authoritative documents are still open. Do not assume an answer — ask.
 
