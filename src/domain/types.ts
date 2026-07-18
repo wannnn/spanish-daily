@@ -1,7 +1,8 @@
 /**
- * Vocabulary domain types.
+ * Domain types.
  *
- * Contract: docs/vocabulary-spec.md (Schema Version 1).
+ * Vocabulary contract: docs/vocabulary-spec.md (Schema Version 1).
+ * History contract: docs/architecture.md §3.
  */
 
 /**
@@ -38,4 +39,21 @@ export type VocabularyEntry = {
   readonly order: number;
   /** Grammatical category, from the closed enum. */
   readonly pos: Pos;
+};
+
+/**
+ * One day's learning record (docs/architecture.md §3).
+ *
+ * `history.jsonl` is append-only, one record per day, keyed by date. `word` is
+ * redundant against the vocabulary but kept deliberately: an entry may be
+ * removed from the vocabulary while its `id` remains here, so a record must stay
+ * readable on its own.
+ */
+export type HistoryRecord = {
+  /** The Asia/Taipei calendar date, strictly `YYYY-MM-DD`. Unique per file. */
+  readonly date: string;
+  /** The vocabulary entry's id. Same format as `VocabularyEntry.id`. */
+  readonly id: string;
+  /** The word taught that day, as it stood in the vocabulary at the time. */
+  readonly word: string;
 };

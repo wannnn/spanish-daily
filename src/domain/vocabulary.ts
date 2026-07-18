@@ -132,26 +132,31 @@ function assertNoMissingFields(
   }
 }
 
-/** Canonical-form constraints on `word` (vocabulary-spec §2). */
+/**
+ * How a string fails the canonical-form rules for `word` (vocabulary-spec §2),
+ * or `undefined` if it satisfies them.
+ *
+ * Shared with history parsing, which stores the same word and must hold it to
+ * the same rules — one implementation of the rules, not two.
+ */
+export function canonicalWordViolation(word: string): string | undefined {
+  if (word.length === 0) return 'must not be empty';
+  if (word !== word.trim()) return 'must not have leading or trailing whitespace';
+  if (word !== word.normalize('NFC')) return 'must be Unicode NFC-normalized';
+  if (word !== word.toLowerCase()) return 'must be lowercase';
+  return undefined;
+}
+
+/** Whether a string is a well-formed vocabulary id (vocabulary-spec §2). */
+export function isVocabularyId(value: string): boolean {
+  return ID_PATTERN.test(value);
+}
+
 function assertCanonicalWord(word: string, where: string): void {
-  if (word.length === 0) {
-    throw fail(`${where}: "word" must not be empty.`);
-  }
-  if (word !== word.trim()) {
-    throw fail(
-      `${where}: "word" must not have leading or trailing whitespace, but found ${JSON.stringify(word)}.`,
-    );
-  }
-  if (word !== word.normalize('NFC')) {
-    throw fail(
-      `${where}: "word" must be Unicode NFC-normalized, but found a differently normalized form of ${JSON.stringify(word)}.`,
-    );
-  }
-  if (word !== word.toLowerCase()) {
-    throw fail(
-      `${where}: "word" must be lowercase, but found ${JSON.stringify(word)}.`,
-    );
-  }
+  const violation = canonicalWordViolation(word);
+  if (violation === undefined) return;
+
+  throw fail(`${where}: "word" ${violation}, but found ${JSON.stringify(word)}.`);
 }
 
 /**
