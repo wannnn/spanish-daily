@@ -193,6 +193,15 @@ The loader may emit an informational, non-fatal note when a `word` is duplicated
 across differing `pos` values — this confirms an intentional homograph rather
 than masking an error.
 
+### Why JSON, not CSV
+
+Spanish vocabulary data contains commas, accents, and `ñ`. CSV escaping introduces
+parsing ambiguity around exactly that content, and its characteristic failure is
+silent: a mis-escaped field shifts the remaining columns instead of raising an
+error, so `pos` can quietly become a `word`. A JSON array makes the structure
+explicit, so every violation above is detectable and the loader can fail loudly
+rather than accept corrupted data.
+
 ### Unknown-field contract
 
 Unknown fields are a validation error and stop the load immediately. Because this

@@ -12,13 +12,19 @@ is structured.
 Pipeline position:
 
 ```
-vocabulary entry  ->  Claude API lesson generation  ->  Markdown lesson  ->  Notion publishing
+vocabulary entry  ->  lesson generation  ->  canonical lesson in Git  ->  projections / notifications
 ```
 
+The canonical lesson in Git is the destination this document is responsible for.
+Projections (such as Notion) and notifications are downstream consumers of that
+canonical content and are out of scope here.
+
 Only the generation contract is specified here. No API, Notion, Telegram, or
-Actions integration is built by this document. Related context: product goal and
-lesson content requirements live in `CLAUDE.md`; the vocabulary contract lives in
-`docs/vocabulary-spec.md`.
+Actions integration is built by this document. Authoritative sources for adjacent
+areas: the vocabulary data contract lives in `docs/vocabulary-spec.md`; the
+application architecture, pipeline stages, and boundaries live in
+`docs/architecture.md`; `CLAUDE.md` holds high-level project instructions and
+navigation. Lesson content requirements are owned by **this** document.
 
 ## Design principles
 
@@ -88,7 +94,9 @@ Chinese strings given below.
 
 ### Frontmatter
 
-A minimal YAML frontmatter block for traceability and idempotent republishing:
+The canonical lesson document carries a minimal YAML frontmatter block for
+traceability and idempotent republishing. It is assembled by the pipeline, not by
+the generator (see §5, Output constraints):
 
 ```
 ---
@@ -101,7 +109,7 @@ lesson_schema_version: 1
 ```
 
 `date` is the Asia/Taipei date the lesson was generated for (see the timezone rule
-in `CLAUDE.md`). The frontmatter carries no teaching content; the lesson body
+in `docs/architecture.md`). The frontmatter carries no teaching content; the lesson body
 begins at Word basics.
 
 ### Section 1 — Word basics (`## 基本資訊`)
@@ -261,11 +269,16 @@ an implementation — no API call is built here.
 
 **Output constraints**
 
-- A single Markdown document with the frontmatter and the fixed sections of §2, in
-  order.
+- The generator produces the Markdown lesson **body**: the fixed sections of §2, in
+  order. It does not produce the frontmatter.
+- The canonical document's frontmatter is assembled by the pipeline after
+  generation. `id`, `date`, and `lesson_schema_version` are pipeline/canonical
+  metadata, not values the generator decides — consistent with §1, where `id` is
+  correlation metadata rather than a generation input. See `docs/architecture.md`
+  §4 for where assembly happens.
 - Complete conjugation tables for verbs; representative examples per §3.
 - Deterministic structure (fixed headings) so the result can be validated and
-  published to Notion without fragile parsing.
+  projected without fragile parsing.
 
 **Quality requirements**
 
