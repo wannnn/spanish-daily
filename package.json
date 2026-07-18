@@ -5,8 +5,9 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "tsc",
-    "typecheck": "tsc --noEmit"
+    "build": "rm -rf dist && tsc",
+    "typecheck": "tsc --noEmit",
+    "test": "npm run build && node --test \"dist/**/*.test.js\""
   },
   "keywords": [],
   "author": "",
