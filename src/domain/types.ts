@@ -3,6 +3,7 @@
  *
  * Vocabulary contract: docs/vocabulary-spec.md (Schema Version 1).
  * History contract: docs/architecture.md §3.
+ * Lesson contract: docs/lesson-spec.md (Lesson Schema Version 1).
  */
 
 /**
@@ -56,4 +57,35 @@ export type HistoryRecord = {
   readonly id: string;
   /** The word taught that day, as it stood in the vocabulary at the time. */
   readonly word: string;
+};
+
+/**
+ * The frontmatter of a canonical lesson document (docs/lesson-spec.md §2).
+ *
+ * Pipeline metadata only — it carries no teaching content, and the generator
+ * never supplies it. Nothing adapter-specific belongs here.
+ */
+export type LessonMetadata = {
+  /** The vocabulary entry this lesson belongs to. */
+  readonly id: string;
+  /** The canonical Spanish word being taught. */
+  readonly word: string;
+  /** Part of speech, which selects the Word-forms template. */
+  readonly pos: Pos;
+  /** The Asia/Taipei date the lesson was generated for, as `YYYY-MM-DD`. */
+  readonly date: string;
+  /** Serialized as `lesson_schema_version` in the frontmatter. */
+  readonly lessonSchemaVersion: number;
+};
+
+/**
+ * A canonical lesson: the first-class Git artifact of this system
+ * (docs/architecture.md §4).
+ *
+ * `body` is the teaching material — the fixed sections of lesson-spec §2 — and
+ * never includes the frontmatter, which is assembled at render time.
+ */
+export type Lesson = {
+  readonly metadata: LessonMetadata;
+  readonly body: string;
 };
