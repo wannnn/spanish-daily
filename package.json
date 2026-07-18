@@ -7,7 +7,8 @@
   "scripts": {
     "build": "rm -rf dist && tsc",
     "typecheck": "tsc --noEmit",
-    "test": "npm run build && node --test \"dist/**/*.test.js\""
+    "test": "npm run build && node --test \"dist/**/*.test.js\"",
+    "today": "npm run build --silent && node dist/src/cli/today.js"
   },
   "keywords": [],
   "author": "",
