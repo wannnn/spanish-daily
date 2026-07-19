@@ -1,0 +1,162 @@
+# Stage 1 of the daily pipeline, run by GitHub Actions.
+#
+# The workflow is a shell, not a brain. Every business rule — which word is
+# today's, what a lesson must contain, whether the generated file is acceptable,
+# what gets committed, and what counts as done — lives in Node and is tested
+# there (docs/architecture.md §5). This file only wires up an environment and
+# calls three things in order: prepare, the generation action, finalize.
+#
+# It never appends to history, never stages, never commits, and never pushes.
+# The finalize CLI does all of that in one commit, and reports completion only
+# after the push succeeds.
+
+name: Daily lesson
+
+on:
+  workflow_dispatch:
+  schedule:
+    # GitHub Actions cron is always UTC and does not understand Asia/Taipei.
+    # 00:00 UTC is 08:00 in Taipei, year-round: Taiwan observes no daylight
+    # saving, so UTC+8 is fixed and this needs no seasonal adjustment.
+    - cron: "0 0 * * *"
+
+# The lesson and the history record are committed and pushed by the finalize
+# CLI, using the checkout's own credentials. Nothing here reads issues or pull
+# requests, so nothing else is granted.
+permissions:
+  contents: write
+
+# One run at a time. Never cancel a run in progress: it may already have
+# committed the day's lesson and be partway through pushing it, and there is no
+# automatic recovery from a half-finished run.
+concurrency:
+  group: daily-lesson
+  cancel-in-progress: false
+
+jobs:
+  daily-lesson:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v6
+        with:
+          # Full history, so the push is an ordinary fast-forward rather than a
+          # push from a shallow clone.
+          fetch-depth: 0
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "26"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Configure the committing identity
+        # Repository-local, never global. This is the identity the finalize
+        # commit carries; it is not a login and grants nothing.
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+
+      - name: Prepare today's lesson
+        id: prepare
+        env:
+          # The runner's temp directory, deliberately OUTSIDE the checkout. A
+          # shell creates a redirection target before the command runs, so
+          # writing this inside the worktree would make the repository dirty
+          # before `prepare` could inspect it — and would then be a change the
+          # generation step is not authorized to have made, which `finalize`
+          # refuses. The runner discards this directory when the job ends.
+          TASK_FILE: ${{ runner.temp }}/daily-lesson-task.json
+        run: |
+          node dist/src/cli/prepare.js > "$TASK_FILE"
+
+          # Read the envelope with Node — the runtime this project already
+          # depends on — rather than adding jq. Quoted heredoc, so nothing here
+          # is expanded by the shell.
+          node --input-type=module - <<'NODE'
+          import { appendFileSync, readFileSync } from 'node:fs';
+
+          const taskFile = process.env.TASK_FILE;
+          const prepared = JSON.parse(readFileSync(taskFile, 'utf8'));
+
+          const lines = [`kind=${prepared.kind}`, `task_file=${taskFile}`];
+
+          // The task is carried into the prompt as a value, so the generation
+          // step never has to read a file outside the working directory.
+          if (prepared.kind === 'generate') {
+            lines.push('task<<TASK_JSON', JSON.stringify(prepared.task, null, 2), 'TASK_JSON');
+          }
+
+          appendFileSync(process.env.GITHUB_OUTPUT, `${lines.join('\n')}\n`);
+          process.stderr.write(`prepare: ${prepared.kind}\n`);
+          NODE
+
+      - name: Generate the lesson
+        # Only a `generate` result reaches this step. `replay` and `exhausted`
+        # skip generation and finalization entirely, and the job still succeeds:
+        # a day with nothing to teach is an ordinary outcome, not a failure.
+        if: steps.prepare.outputs.kind == 'generate'
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          prompt: |
+            Write one Spanish lesson for this project.
+
+            Read `docs/lesson-spec.md` first. It is the authoritative contract
+            for what a lesson contains: the frontmatter, the five fixed section
+            headings in their required order, the conjugation and agreement
+            rules for each part of speech, and the example-sentence rules.
+            Follow it exactly.
+
+            This is the generation task. Every value in it was decided by the
+            pipeline and is not yours to change:
+
+            ```json
+            ${{ steps.prepare.outputs.task }}
+            ```
+
+            Write exactly one file, at the path given by `targetPath`, and
+            nothing else. It must be a complete canonical lesson document: the
+            YAML frontmatter followed by the five sections. Copy `id`, `word`,
+            `pos`, `date`, and `lessonSchemaVersion` into the frontmatter
+            verbatim — as `lesson_schema_version` — exactly as they appear
+            above. Do not invent, alter, or omit any of them.
+
+            Teach `word`, in its canonical dictionary form. Explanations and
+            headings are in Traditional Chinese; the Spanish word,
+            conjugations, and example sentences stay in Spanish. Linguistic
+            accuracy matters more than length: a wrong conjugation or gender is
+            a defect. Omit CEFR and frequency rather than guessing at them.
+
+            You must NOT:
+            - modify `history.jsonl`
+            - modify any other lesson, `vocabulary.json`, application code,
+              documentation, or workflow file
+            - create any file other than the one `targetPath` names
+            - run the prepare or finalize commands, or any git command
+            - commit, push, or create a branch or a pull request
+            - ask the user anything — this run is unattended and a question
+              would hang it rather than reach a person
+
+            The pipeline appends the learning record and commits both files
+            itself, after checking your work. Write the one file, then stop.
+          claude_args: |
+            --model claude-sonnet-5
+            --max-turns 20
+            --allowedTools Read,Write,Edit,Glob,Grep
+            --disallowedTools AskUserQuestion,Bash,WebSearch,WebFetch,Agent
+
+      - name: Finalize the day
+        # Accepts the generated lesson, appends the history record, commits both
+        # in one commit, and pushes. Every rule it applies is Node's, and this
+        # step neither inspects nor second-guesses the result.
+        if: steps.prepare.outputs.kind == 'generate'
+        run: node dist/src/cli/finalize.js "${{ steps.prepare.outputs.task_file }}"
