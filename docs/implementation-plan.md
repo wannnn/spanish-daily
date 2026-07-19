@@ -79,30 +79,43 @@ It is not architecture and not a contract. It never decides how the system works
     target path**. Repository-root equality is by realpath on both sides, because
     Git resolves symlinks when it reports the worktree root.
 
+- [x] **Stage 1 durable write** — `6b367cb`
+  - `pipeline/finalize.ts` is the first composition root: it decides the order of
+    operations and nothing else. `io/git.ts` gains the write side. Settled: the
+    sequence is fixed — inspect → confirm only the lesson changed → read it →
+    accept it → append history → re-inspect → stage exactly two paths → confirm
+    the index holds exactly those two → commit → push — and **completion is
+    returned only after the push**, because on an ephemeral runner an unpushed
+    commit does not exist. **The durable write owns the canonical history path**:
+    `HISTORY_PATH` is fixed in the module, not accepted from a caller, since a
+    caller that could name another file could name the lesson just accepted and
+    append a JSONL row into canonical content after every check that would have
+    caught it. The history record is likewise derived from the task, never
+    supplied. **Staging is by exact path after `--`** — no `git add .`, no
+    `git add -A` — the index is verified before the commit, and the commit is
+    given no paths so it takes exactly what was verified. The upstream is never
+    guessed: a branch without one fails loudly, and the system sets neither a
+    remote nor a branch. **Nothing is rolled back** — no reset, checkout, revert,
+    or force push — and each error names the stage, what is on disk, and, after a
+    failed push, the local commit hash. `GitWriteError` joins
+    `GitInspectionError`, mirroring the `HistoryStoreError` / `HistoryLoadError`
+    split.
+
 ## Current milestone
 
-**Stage 1 durable write** — not started.
+**Stage 1 orchestration and CLI** — not started.
 
-The step that makes a day complete. It composes what the last two milestones
-built into one durable write, and still stops short of the scheduled run.
+The milestone that joins the pieces into a run, without yet scheduling one.
 
-- verify that generation left exactly the one expected lesson change
-- accept the lesson document
-- append the history record
-- stage exactly the lesson path and the history path
-- create a single commit carrying both
-- push it
-- report durable completion only after the push succeeds
-- failure ordering and recovery semantics throughout
-
-Build this as composable capability, not as a finished workflow: the ordering
-rule — nothing appended and nothing committed until every acceptance check has
-passed — is the part that must be testable on its own.
+- confirm a clean working tree **before** generation, not only after
+- compose prepare → the external generation boundary → the durable finalize
+- the `replay` and `exhausted` flows, which never reach generation
+- a partial-run recovery policy: an unpushed commit survives on a developer
+  machine, and nothing currently resumes from it
+- the `prepare` and `finalize` CLI contracts
 
 Explicitly out of scope for this milestone:
 
-- the complete scheduled daily orchestration
-- the prepare / finalize CLI
 - the GitHub Actions workflow YAML
 - the Claude Code Action prompt
 - `CLAUDE_CODE_OAUTH_TOKEN` setup
@@ -111,7 +124,6 @@ Explicitly out of scope for this milestone:
 
 ## Remaining milestones
 
-- [ ] Stage 1 durable write: staging, the single commit, and the push
 - [ ] Stage 1 orchestration and the prepare / finalize CLI
 - [ ] Claude Code Action workflow and generation prompt
 - [ ] Notion projection
@@ -129,7 +141,7 @@ Undecided, and each will block the milestone it belongs to.
 | The exact tool-restriction syntax that keeps the agent to one file | Workflow |
 | `CLAUDE_CODE_OAUTH_TOKEN` setup and the repository secret name | Workflow |
 | Seed vocabulary content — the word list is the maintainer's decision (`docs/vocabulary-spec.md` §1); a small hand-verified set is enough to exercise the pipeline | End-to-end runs |
-| Whether the durable write stages the lesson and the history record with explicit paths or with a single staged commit of the expected set | Durable write |
+| How a partially completed run is recovered — an unpushed commit on a developer machine survives, and nothing currently resumes from it | Orchestration |
 | The Git identity used for commits in GitHub Actions | Scheduling |
 | The Notion database Title property, and Markdown → Notion block conversion | Notion projection |
 
@@ -138,10 +150,10 @@ Undecided, and each will block the milestone it belongs to.
 State as of the latest completed milestone. Replace it when a milestone closes;
 do not accumulate history here.
 
-- Latest commit: `8aa9b6e` on `main`, pushed
+- Latest commit: `6b367cb` on `main`, pushed
 - `npm run typecheck` — passes
 - `npm run build` — passes
-- `npm test` — 411 tests, 411 pass, 0 fail (54 suites)
+- `npm test` — 459 tests, 459 pass, 0 fail (64 suites)
 - Working tree expected clean
 - Dependencies: `typescript` and `@types/node` only — no runtime dependency
 
