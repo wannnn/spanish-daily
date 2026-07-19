@@ -46,35 +46,49 @@ It is not architecture and not a contract. It never decides how the system works
     result, appends history, and commits + pushes both in one commit; the prompt
     and the lesson contract constrain teaching quality, while the Node validator
     is an objective acceptance gate only.
+- [x] **Node prepare and lesson acceptance contracts** — `97924eb`
+  - `domain/lessonTask.ts`: the two Node-side steps of Stage 1, both pure.
+    **prepare** composes `selectWord` into a deterministic task — `id`, `word`,
+    `pos`, `date`, lesson schema version, and the one path the lesson may be
+    written to — and produces no task on `replay` or `exhausted`. **acceptance**
+    checks the returned document against that task: exact path, then parse, then
+    metadata field by field, then canonical form. Settled: acceptance compares
+    the **raw** bytes (`renderLesson(parseLesson(document)) === document`), so a
+    CRLF document, a missing final newline, or non-canonical quoting or spacing
+    is rejected and never repaired; it does not re-run `validateLessonBody`,
+    because `parseLesson` already runs the whole canonical contract; and an
+    invalid `today` fails before any branch, including replay and exhaustion.
 
 ## Current milestone
 
-**Node prepare and finalize contracts** — not started.
+**Stage 1 operational finalize foundations** — not started.
 
-The smallest vertical slice of the corrected Stage 1, in Node only:
+The first milestone that touches operational state. It builds the IO the rest of
+finalize will stand on, and stops short of performing the durable write:
 
-- **prepare** — produce the deterministic task context for today: the `id`,
-  `word`, `pos`, `date`, lesson schema version, and the single repository-relative
-  path the lesson may be written to. On `replay` or `exhausted` it produces no
-  task context.
-- **finalize** — verify the lesson file the generation step wrote: that it parses,
-  that its metadata equals the task context exactly, that it is in canonical form,
-  and that the working tree's changed-file set contains nothing but that one file.
+- **history append** — add one record to `history.jsonl`.
+- **Git changed-file inspection** — read which files the working tree has
+  changed, so the acceptance gate's file-scope check has something to ask.
+- **dirty working tree semantics** — decide and implement what Stage 1 does when
+  the local repository is not clean (`docs/architecture.md` §8 leaves this open).
+- the IO contracts the later staging, commit, and push step will build on.
 
 Explicitly out of scope for this milestone:
 
+- the Git commit and push implementation itself
+- full daily orchestration of Stage 1
 - the GitHub Actions workflow YAML
 - the Claude Code Action prompt
 - `CLAUDE_CODE_OAUTH_TOKEN` setup
-- history append
-- the Git commit and push implementation
 - Notion
 - Telegram
 
 ## Remaining milestones
 
-- [ ] Stage 1 prepare: selection → task context
-- [ ] Stage 1 finalize: acceptance gate, history append, commit + push
+- [ ] Stage 1 operational finalize foundations: history append, Git inspection,
+      dirty working tree
+- [ ] Stage 1 durable write: staging, the single commit, and the push
+- [ ] Stage 1 orchestration and the prepare / finalize CLI
 - [ ] Claude Code Action workflow and generation prompt
 - [ ] Notion projection
 - [ ] Telegram notification
@@ -91,8 +105,8 @@ Undecided, and each will block the milestone it belongs to.
 | The exact tool-restriction syntax that keeps the agent to one file | Workflow |
 | `CLAUDE_CODE_OAUTH_TOKEN` setup and the repository secret name | Workflow |
 | Seed vocabulary content — the word list is the maintainer's decision (`docs/vocabulary-spec.md` §1); a small hand-verified set is enough to exercise the pipeline | End-to-end runs |
-| Whether `history.jsonl` missing means "first run" outside the CLI, where `cli/today.ts` currently makes that call at its own composition boundary | Stage 1 orchestration |
-| How Stage 1 handles an unclean local repository — handle it or refuse to run (`docs/architecture.md` §8) | Stage 1 orchestration |
+| Whether `history.jsonl` missing means "first run" outside the CLI, where `cli/today.ts` currently makes that call at its own composition boundary | Operational finalize foundations |
+| How Stage 1 handles an unclean local repository — handle it or refuse to run (`docs/architecture.md` §8) | Operational finalize foundations |
 | The Git identity used for commits in GitHub Actions | Scheduling |
 | The Notion database Title property, and Markdown → Notion block conversion | Notion projection |
 
@@ -101,10 +115,10 @@ Undecided, and each will block the milestone it belongs to.
 State as of the latest completed milestone. Replace it when a milestone closes;
 do not accumulate history here.
 
-- Latest commit: `a19f05b` on `main`, pushed
+- Latest commit: `97924eb` on `main`, pushed
 - `npm run typecheck` — passes
 - `npm run build` — passes
-- `npm test` — 291 tests, 291 pass, 0 fail (38 suites)
+- `npm test` — 334 tests, 334 pass, 0 fail (46 suites)
 - Working tree expected clean
 - Dependencies: `typescript` and `@types/node` only — no runtime dependency
 
