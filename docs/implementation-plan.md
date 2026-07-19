@@ -125,35 +125,60 @@ It is not architecture and not a contract. It never decides how the system works
     resets, reverts, checks out, or force-pushes, and a failure after the commit
     leaves a local commit that a re-run will refuse to work around.
 
+- [x] **GitHub Actions generation workflow** — `bbaeed6`
+  - `.github/workflows/daily-lesson.yml`. The workflow is a shell: it wires up an
+    environment and calls prepare, the generation action, and finalize in order,
+    while every business rule stays in Node. Verified against official
+    documentation rather than guessed: the action is
+    `anthropics/claude-code-action@v1`; the OAuth input is
+    `claude_code_oauth_token`; CLI options go through `claude_args` one per line,
+    the beta's separate `model` / `allowed_tools` / `disallowed_tools` inputs
+    having been removed; the model is the pinned full name `claude-sonnet-5`
+    rather than the `sonnet` alias; and the tool strings are the exact names from
+    the tools reference. Settled: **the task file is written to
+    `${{ runner.temp }}`**, never into the checkout; **the task is carried into
+    the prompt as a value** re-serialized by Node, so the agent never opens a file
+    outside the working directory and the shell never parses JSON; the envelope is
+    read with Node rather than `jq`; **`replay` and `exhausted` skip both the
+    generation and finalization steps** and the job still succeeds; permissions are
+    `contents: write` and nothing else; the committing identity is
+    `github-actions[bot]`, set repository-locally, which settles the Git identity
+    question; concurrency is a fixed group with `cancel-in-progress: false`,
+    because a cancelled run may already have committed and be partway through
+    pushing; the schedule is `0 0 * * *` UTC, which is 08:00 Asia/Taipei
+    year-round. **Tool restrictions are one layer, not a sandbox** — the prompt and
+    the Node acceptance gate are the others, and only the gate decides what is
+    committed. `show_full_output` is left off so tool output and file contents stay
+    out of the Actions log.
+
 ## Current milestone
 
-**GitHub Actions generation workflow** — not started.
+**First hosted workflow validation** — not started.
 
-The step that makes the daily run happen without a person driving it. The Node
-side is complete and its boundaries are fixed; this milestone wires them to the
-generation action.
+Everything up to this point was verified locally. This milestone is the first
+run on a real runner, and it exists because several things simply cannot be
+checked anywhere else.
 
-- scheduled and manual workflow triggers
-- checkout, Node setup, build
-- run the `prepare` CLI, writing its output to the runner temp directory —
-  never into the worktree
-- on `generate`, invoke the Claude Code Action
-- the action writes the canonical lesson from the task and the lesson spec
-- on `replay` or `exhausted`, skip generation and finalization entirely
-- run the `finalize` CLI
-- the OAuth secret, the model argument, and the tool restrictions that keep the
-  agent to one file
-- workflow permissions and a concurrency group
+- create the `CLAUDE_CODE_OAUTH_TOKEN` value with `claude setup-token` and add it
+  as a repository secret
+- add an initial `vocabulary.json`
+- run the workflow once through `workflow_dispatch`
+- read the real Actions log and confirm: the action authenticates; the model
+  argument is accepted; the tool restrictions hold; `contents: write` alone is
+  enough; the lesson the agent writes passes the acceptance gate unchanged; and
+  the commit reaches the remote
+- fix only what a real hosted run exposes
 
 Explicitly out of scope for this milestone:
 
 - Notion
 - Telegram
+- any further local simulation of the action
 - automatic recovery from a partially completed run
 
 ## Remaining milestones
 
-- [ ] GitHub Actions generation workflow
+- [ ] First hosted workflow validation
 - [ ] Notion projection
 - [ ] Telegram notification
 
@@ -163,14 +188,10 @@ Undecided, and each will block the milestone it belongs to.
 
 | Question | Blocks |
 |---|---|
-| The `anthropics/claude-code-action` version to pin | Workflow |
-| The model argument the action is given | Workflow |
-| The exact tool-restriction syntax that keeps the agent to one file | Workflow |
-| `CLAUDE_CODE_OAUTH_TOKEN` setup and the repository secret name | Workflow |
-| Seed vocabulary content — the word list is the maintainer's decision (`docs/vocabulary-spec.md` §1); a small hand-verified set is enough to exercise the pipeline | End-to-end runs |
+| Creating the `CLAUDE_CODE_OAUTH_TOKEN` value with `claude setup-token` and adding it as a repository secret — the workflow reads it, but nobody has created it yet | First hosted workflow validation |
+| Whether the action, in automation mode on a schedule, ever needs `issues` or `pull-requests` permissions; the workflow grants only `contents: write` and this is not verifiable off a hosted runner | First hosted workflow validation |
+| Seed vocabulary content — the word list is the maintainer's decision (`docs/vocabulary-spec.md` §1); a small hand-verified set is enough to exercise the pipeline | First hosted workflow validation |
 | How a partially completed run is *resumed*, if ever — the policy is now "fail loudly and leave it to a person"; an automatic path would need its own design | A future recovery milestone |
-| Whether `prepare` and `finalize` get npm scripts alongside `today`, or are only ever invoked by the workflow | Workflow |
-| The Git identity used for commits in GitHub Actions | Workflow |
 | The Notion database Title property, and Markdown → Notion block conversion | Notion projection |
 
 ## Verification baseline
@@ -178,10 +199,12 @@ Undecided, and each will block the milestone it belongs to.
 State as of the latest completed milestone. Replace it when a milestone closes;
 do not accumulate history here.
 
-- Latest commit: `897ff5f` on `main`, pushed
+- Latest commit: `bbaeed6` on `main`, pushed
 - `npm run typecheck` — passes
 - `npm run build` — passes
 - `npm test` — 532 tests, 532 pass, 0 fail (75 suites)
+- `npm ci` succeeds despite the version mismatch below, and does not rewrite the
+  lockfile — checked in an isolated copy, because the workflow depends on it
 - Working tree expected clean
 - Dependencies: `typescript` and `@types/node` only — no runtime dependency
 
