@@ -1,0 +1,12 @@
+[
+  { "id": "w0001", "word": "hablar", "order": 1, "pos": "verb" },
+  { "id": "w0002", "word": "ser", "order": 2, "pos": "verb" },
+  { "id": "w0003", "word": "estar", "order": 3, "pos": "verb" },
+  { "id": "w0004", "word": "tener", "order": 4, "pos": "verb" },
+  { "id": "w0005", "word": "ir", "order": 5, "pos": "verb" },
+  { "id": "w0006", "word": "hacer", "order": 6, "pos": "verb" },
+  { "id": "w0007", "word": "casa", "order": 7, "pos": "noun" },
+  { "id": "w0008", "word": "tiempo", "order": 8, "pos": "noun" },
+  { "id": "w0009", "word": "bueno", "order": 9, "pos": "adjective" },
+  { "id": "w0010", "word": "hoy", "order": 10, "pos": "adverb" }
+]
