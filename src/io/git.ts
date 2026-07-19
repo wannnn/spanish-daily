@@ -49,6 +49,17 @@ export class GitInspectionError extends Error {
 }
 
 /**
+ * Staging, committing, or pushing failed.
+ *
+ * Separate from `GitInspectionError` for the same reason `HistoryStoreError` is
+ * separate from `HistoryLoadError`: "I could not read the repository" and "I
+ * could not change it" leave the caller in very different positions.
+ */
+export class GitWriteError extends Error {
+  override readonly name = 'GitWriteError';
+}
+
+/**
  * Every change in the working tree of `repositoryRoot`.
  *
  * Ignored files are not included: they are outside the system's concern by
@@ -198,7 +209,7 @@ export function assertOnlyGeneratedLessonChange(
   changes: readonly GitChange[],
   expectedPath: string,
 ): void {
-  assertSafeRelativePath(expectedPath);
+  assertSafeRepositoryPath(expectedPath, 'The expected lesson path');
 
   if (changes.length !== 1) {
     throw new GitInspectionError(
@@ -235,31 +246,216 @@ export function assertOnlyGeneratedLessonChange(
 }
 
 /**
- * A path that is safe to compare against Git's own output: relative, POSIX, and
- * contained.
+ * A path that is safe to compare against Git's own output, and safe to hand to
+ * Git as an argument: relative, POSIX, and contained.
+ *
+ * Exported because every entry point that accepts a repository path needs the
+ * same rule, and a second copy of it would be a second place to get it wrong.
+ *
+ * @param label How to name this path in an error, e.g. "The history path".
+ * @throws {GitInspectionError}
  */
-function assertSafeRelativePath(path: string): void {
+export function assertSafeRepositoryPath(path: string, label = 'The path'): void {
   if (path === '') {
-    throw new GitInspectionError('The expected lesson path must not be empty.');
+    throw new GitInspectionError(`${label} must not be empty.`);
   }
   if (path.startsWith('/')) {
     throw new GitInspectionError(
-      `The expected lesson path must be repository-relative, but ${JSON.stringify(path)} ` +
-        'is absolute.',
+      `${label} must be repository-relative, but ${JSON.stringify(path)} is absolute.`,
     );
   }
   if (path.includes('\\')) {
     throw new GitInspectionError(
-      `The expected lesson path must use POSIX separators, but ${JSON.stringify(path)} ` +
-        'contains a backslash. Git reports paths with "/" on every platform.',
+      `${label} must use POSIX separators, but ${JSON.stringify(path)} contains a ` +
+        'backslash. Git reports paths with "/" on every platform.',
     );
   }
   if (path.split('/').includes('..')) {
     throw new GitInspectionError(
-      `The expected lesson path must stay inside the repository, but ` +
-        `${JSON.stringify(path)} traverses upward.`,
+      `${label} must stay inside the repository, but ${JSON.stringify(path)} ` +
+        'traverses upward.',
     );
   }
+}
+
+/**
+ * The changed paths are exactly these, no more and no fewer.
+ *
+ * Used before staging, to confirm that appending the history record added the
+ * history file to the picture and nothing else appeared alongside it. Says
+ * nothing about *how* each path changed — `assertFullyStaged` is what checks
+ * that.
+ *
+ * Pure: runs no Git, and does not modify what it is given.
+ *
+ * @throws {GitInspectionError} If the sets differ, or any change is a rename.
+ */
+export function assertChangedPathsAre(
+  changes: readonly GitChange[],
+  expectedPaths: readonly string[],
+): void {
+  for (const path of expectedPaths) {
+    assertSafeRepositoryPath(path, 'An expected changed path');
+  }
+
+  const actual = new Set(changes.map((change) => change.path));
+  const expected = new Set(expectedPaths);
+
+  const unexpected = [...actual].filter((path) => !expected.has(path)).sort();
+  if (unexpected.length > 0) {
+    throw new GitInspectionError(
+      `The working tree has ${unexpected.length} unexpected ` +
+        `${unexpected.length === 1 ? 'change' : 'changes'}: ${listPaths(unexpected)}. ` +
+        `Only ${listPaths([...expected].sort())} may change.`,
+    );
+  }
+
+  const missing = [...expected].filter((path) => !actual.has(path)).sort();
+  if (missing.length > 0) {
+    throw new GitInspectionError(
+      `The working tree does not show the expected ${listPaths(missing)}. ` +
+        'Every file the run writes must be visible to git before it is staged.',
+    );
+  }
+
+  const renamed = changes.filter((change) => change.originalPath !== undefined);
+  if (renamed.length > 0) {
+    throw new GitInspectionError(
+      `The working tree reports ${listPaths(renamed.map((change) => change.path))} as ` +
+        'renamed or copied. This run only creates and extends files.',
+    );
+  }
+}
+
+/**
+ * Exactly these paths are staged, and nothing of them is left unstaged.
+ *
+ * The check that makes "commit exactly two files" true: the commit that follows
+ * takes whatever the index holds, so the index is what must be verified. A path
+ * with unstaged remainder is rejected too, because the commit would then carry a
+ * different version of the file than the one on disk.
+ *
+ * Pure: runs no Git, and does not modify what it is given.
+ *
+ * @throws {GitInspectionError} If anything else is staged, or anything is left over.
+ */
+export function assertFullyStaged(
+  changes: readonly GitChange[],
+  expectedPaths: readonly string[],
+): void {
+  assertChangedPathsAre(changes, expectedPaths);
+
+  for (const change of changes) {
+    if (change.indexStatus === ' ' || change.indexStatus === '?') {
+      throw new GitInspectionError(
+        `${change.path} is not staged — git reports it as ` +
+          `${JSON.stringify(change.indexStatus + change.worktreeStatus)}.`,
+      );
+    }
+    if (change.worktreeStatus !== ' ') {
+      throw new GitInspectionError(
+        `${change.path} has unstaged changes left over — git reports it as ` +
+          `${JSON.stringify(change.indexStatus + change.worktreeStatus)}. ` +
+          'The commit would not match the file on disk.',
+      );
+    }
+  }
+}
+
+/**
+ * Stage exactly these paths.
+ *
+ * Every path is passed after `--`, so a path is never mistaken for an option or
+ * a revision. There is no `git add .` and no `git add -A` anywhere in this
+ * system: a run stages the files it wrote, by name, and nothing it happens to
+ * find beside them.
+ *
+ * @throws {GitInspectionError} The root or a path is unusable.
+ * @throws {GitWriteError} Git refused to stage.
+ */
+export async function stagePaths(
+  repositoryRoot: string,
+  paths: readonly string[],
+): Promise<void> {
+  if (paths.length === 0) {
+    throw new GitInspectionError('Staging requires at least one path.');
+  }
+  for (const path of paths) {
+    assertSafeRepositoryPath(path, 'A path to stage');
+  }
+
+  const root = await resolveWorktreeRoot(repositoryRoot);
+
+  await write(root, ['add', '--', ...paths]);
+}
+
+/**
+ * Commit whatever is staged.
+ *
+ * Deliberately not given paths: the index has already been verified by
+ * `assertFullyStaged`, and passing paths here would commit the working-tree
+ * version instead, bypassing that check.
+ *
+ * The committing identity is the repository's own configuration. This function
+ * does not invent one — an unconfigured identity is a setup problem, and
+ * silently committing as somebody else would be worse than failing.
+ *
+ * @returns The new commit's full hash.
+ * @throws {GitWriteError} Git refused to commit.
+ */
+export async function createCommit(
+  repositoryRoot: string,
+  message: string,
+): Promise<string> {
+  if (message.trim() === '') {
+    throw new GitWriteError('A commit message is required.');
+  }
+
+  const root = await resolveWorktreeRoot(repositoryRoot);
+
+  await write(root, ['commit', '--message', message]);
+
+  return resolveHeadCommit(root);
+}
+
+/**
+ * The full hash of the current `HEAD`.
+ *
+ * @throws {GitInspectionError} There is no resolvable `HEAD`.
+ */
+export async function resolveHeadCommit(repositoryRoot: string): Promise<string> {
+  const root = await resolveWorktreeRoot(repositoryRoot);
+
+  return (await git(root, ['rev-parse', 'HEAD'])).trim();
+}
+
+/**
+ * Push the current branch to the upstream it is already tracking.
+ *
+ * The upstream is looked up and reported on rather than guessed: this function
+ * never picks a remote, never picks a branch, and never sets an upstream. If the
+ * branch has none, that is a configuration decision nobody has made yet, and
+ * inventing one would push a day's work somewhere the maintainer did not choose.
+ *
+ * There is no retry, no rebase, and no force. A rejected push fails.
+ *
+ * @throws {GitWriteError} There is no upstream, or the push was refused.
+ */
+export async function pushCurrentBranch(repositoryRoot: string): Promise<void> {
+  const root = await resolveWorktreeRoot(repositoryRoot);
+
+  try {
+    await git(root, ['rev-parse', '--abbrev-ref', '--symbolic-full-name', '@{upstream}']);
+  } catch (cause) {
+    throw new GitWriteError(
+      `The current branch in ${repositoryRoot} has no upstream, so there is nowhere ` +
+        'to push. Set one deliberately; this system does not choose a remote or a ' +
+        'branch on its own.',
+      { cause },
+    );
+  }
+
+  await write(root, ['push']);
 }
 
 /**
@@ -344,6 +540,23 @@ function gitFailureDetail(cause: unknown): string {
   return messageOf(cause);
 }
 
+/**
+ * Run a Git command that changes the repository.
+ *
+ * The same invocation as `git`, reported as a write failure so a caller can tell
+ * "could not read" from "could not change" without reading the message.
+ */
+async function write(cwd: string, args: readonly string[]): Promise<void> {
+  try {
+    await run('git', [...args], { cwd, encoding: 'utf8', maxBuffer: MAX_OUTPUT_BYTES });
+  } catch (cause) {
+    throw new GitWriteError(
+      `git ${args.join(' ')} failed in ${cwd}: ${gitFailureDetail(cause)}`,
+      { cause },
+    );
+  }
+}
+
 function isRenameOrCopy(status: string): boolean {
   return status === 'R' || status === 'C';
 }
@@ -371,6 +584,14 @@ function describeChanges(changes: readonly GitChange[]): string {
     .join(', ');
 
   const remaining = changes.length - MAX_LISTED_PATHS;
+
+  return remaining > 0 ? `${listed}, and ${remaining} more` : listed;
+}
+
+/** A bounded, readable list of paths for an error message. */
+function listPaths(paths: readonly string[]): string {
+  const listed = paths.slice(0, MAX_LISTED_PATHS).map((path) => truncate(path)).join(', ');
+  const remaining = paths.length - MAX_LISTED_PATHS;
 
   return remaining > 0 ? `${listed}, and ${remaining} more` : listed;
 }

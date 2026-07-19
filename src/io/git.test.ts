@@ -8,10 +8,18 @@ import { promisify } from 'node:util';
 
 import {
   GitInspectionError,
+  GitWriteError,
+  assertChangedPathsAre,
+  assertFullyStaged,
   assertOnlyGeneratedLessonChange,
+  assertSafeRepositoryPath,
   assertWorkingTreeClean,
+  createCommit,
   inspectWorkingTree,
   parsePorcelainStatus,
+  pushCurrentBranch,
+  resolveHeadCommit,
+  stagePaths,
   type GitChange,
 } from './git.js';
 
@@ -495,5 +503,216 @@ describe('inspectWorkingTree with the assertions', () => {
     const changes = await inspectWorkingTree(root);
 
     assert.throws(() => assertOnlyGeneratedLessonChange(changes, LESSON_PATH), GitInspectionError);
+  });
+});
+
+describe('assertSafeRepositoryPath', () => {
+  it('accepts an ordinary repository-relative path', () => {
+    assert.doesNotThrow(() => assertSafeRepositoryPath(LESSON_PATH));
+  });
+
+  it('names the path in the message using the supplied label', () => {
+    assert.throws(() => assertSafeRepositoryPath('', 'The history path'), {
+      message: /The history path must not be empty/,
+    });
+  });
+
+  it('rejects absolute, upward, and backslash paths', () => {
+    assert.throws(() => assertSafeRepositoryPath('/etc/passwd'), /is absolute/);
+    assert.throws(() => assertSafeRepositoryPath('a/../../b'), /traverses upward/);
+    assert.throws(() => assertSafeRepositoryPath('a\\b'), /backslash/);
+  });
+});
+
+describe('assertChangedPathsAre', () => {
+  const expected = [LESSON_PATH, 'history.jsonl'];
+
+  it('accepts exactly the expected paths, in any order', () => {
+    const changes = [change(' ', 'M', 'history.jsonl'), change('?', '?', LESSON_PATH)];
+
+    assert.doesNotThrow(() => assertChangedPathsAre(changes, expected));
+  });
+
+  it('rejects an unexpected extra change', () => {
+    const changes = [
+      change('?', '?', LESSON_PATH),
+      change('?', '?', 'history.jsonl'),
+      change('?', '?', 'stray.txt'),
+    ];
+
+    assert.throws(() => assertChangedPathsAre(changes, expected), {
+      name: 'GitInspectionError',
+      message: /unexpected change: stray\.txt/,
+    });
+  });
+
+  it('rejects a missing expected change', () => {
+    assert.throws(() => assertChangedPathsAre([change('?', '?', LESSON_PATH)], expected), {
+      name: 'GitInspectionError',
+      message: /does not show the expected history\.jsonl/,
+    });
+  });
+
+  it('rejects a rename', () => {
+    const changes = [
+      change('R', ' ', LESSON_PATH, 'old.md'),
+      change('?', '?', 'history.jsonl'),
+    ];
+
+    assert.throws(() => assertChangedPathsAre(changes, expected), {
+      message: /renamed or copied/,
+    });
+  });
+
+  it('rejects an unsafe expected path', () => {
+    assert.throws(() => assertChangedPathsAre([], ['../escape.md']), {
+      message: /traverses upward/,
+    });
+  });
+
+  it('does not modify the changes it is given', () => {
+    const changes = [change('?', '?', LESSON_PATH), change('?', '?', 'history.jsonl')];
+    const before = JSON.stringify(changes);
+
+    assertChangedPathsAre(changes, expected);
+
+    assert.equal(JSON.stringify(changes), before);
+  });
+});
+
+describe('assertFullyStaged', () => {
+  const expected = [LESSON_PATH, 'history.jsonl'];
+
+  it('accepts paths that are staged with nothing left over', () => {
+    const changes = [change('A', ' ', LESSON_PATH), change('M', ' ', 'history.jsonl')];
+
+    assert.doesNotThrow(() => assertFullyStaged(changes, expected));
+  });
+
+  it('rejects a path that is still untracked', () => {
+    const changes = [change('?', '?', LESSON_PATH), change('M', ' ', 'history.jsonl')];
+
+    assert.throws(() => assertFullyStaged(changes, expected), {
+      name: 'GitInspectionError',
+      message: /is not staged/,
+    });
+  });
+
+  it('rejects a path that is staged but modified again afterwards', () => {
+    const changes = [change('A', 'M', LESSON_PATH), change('M', ' ', 'history.jsonl')];
+
+    assert.throws(() => assertFullyStaged(changes, expected), {
+      message: /unstaged changes left over/,
+    });
+  });
+
+  it('still rejects anything beyond the expected paths', () => {
+    const changes = [
+      change('A', ' ', LESSON_PATH),
+      change('M', ' ', 'history.jsonl'),
+      change('A', ' ', 'extra.txt'),
+    ];
+
+    assert.throws(() => assertFullyStaged(changes, expected), /unexpected change/);
+  });
+});
+
+describe('stagePaths', () => {
+  it('stages exactly the paths it is given', async () => {
+    const root = await repository('stage-exact');
+    await write(root, 'wanted.txt');
+    await write(root, 'unwanted.txt');
+
+    await stagePaths(root, ['wanted.txt']);
+
+    assert.deepEqual(await inspectWorkingTree(root), [
+      change('A', ' ', 'wanted.txt'),
+      change('?', '?', 'unwanted.txt'),
+    ].sort((left, right) => (left.path < right.path ? -1 : 1)));
+  });
+
+  it('stages a path containing spaces', async () => {
+    const root = await repository('stage-spaces');
+    await write(root, 'a file.txt');
+
+    await stagePaths(root, ['a file.txt']);
+
+    assert.deepEqual(await inspectWorkingTree(root), [change('A', ' ', 'a file.txt')]);
+  });
+
+  it('rejects an empty path list', async () => {
+    const root = await repository('stage-empty');
+
+    await assert.rejects(() => stagePaths(root, []), GitInspectionError);
+  });
+
+  it('rejects an unsafe path', async () => {
+    const root = await repository('stage-unsafe');
+
+    await assert.rejects(() => stagePaths(root, ['../outside.txt']), {
+      message: /traverses upward/,
+    });
+  });
+
+  it('fails loudly when the path does not exist', async () => {
+    const root = await repository('stage-missing');
+
+    await assert.rejects(() => stagePaths(root, ['nowhere.txt']), (error: unknown) => {
+      assert.ok(error instanceof GitWriteError);
+      assert.ok(error.cause instanceof Error);
+      return true;
+    });
+  });
+});
+
+describe('createCommit and resolveHeadCommit', () => {
+  it('commits the index and returns the new hash', async () => {
+    const root = await repository('commit-basic');
+    await write(root, 'added.txt');
+    await stagePaths(root, ['added.txt']);
+
+    const commit = await createCommit(root, 'add a file');
+
+    assert.match(commit, /^[0-9a-f]{40}$/);
+    assert.equal(await resolveHeadCommit(root), commit);
+    assert.deepEqual(await inspectWorkingTree(root), []);
+  });
+
+  it('commits only what is staged', async () => {
+    const root = await repository('commit-staged-only');
+    await write(root, 'staged.txt');
+    await write(root, 'loose.txt');
+    await stagePaths(root, ['staged.txt']);
+
+    await createCommit(root, 'only the staged one');
+
+    assert.deepEqual(await inspectWorkingTree(root), [change('?', '?', 'loose.txt')]);
+  });
+
+  it('rejects an empty commit message', async () => {
+    const root = await repository('commit-no-message');
+
+    await assert.rejects(() => createCommit(root, '   '), GitWriteError);
+  });
+
+  it('keeps git failure as the cause when there is nothing to commit', async () => {
+    const root = await repository('commit-nothing');
+
+    await assert.rejects(() => createCommit(root, 'empty'), (error: unknown) => {
+      assert.ok(error instanceof GitWriteError);
+      assert.ok(error.cause instanceof Error);
+      return true;
+    });
+  });
+});
+
+describe('pushCurrentBranch', () => {
+  it('fails loudly when the branch has no upstream', async () => {
+    const root = await repository('push-no-upstream');
+
+    await assert.rejects(() => pushCurrentBranch(root), {
+      name: 'GitWriteError',
+      message: /no upstream/,
+    });
   });
 });
