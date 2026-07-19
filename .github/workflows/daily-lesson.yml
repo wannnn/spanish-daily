@@ -47,7 +47,7 @@ jobs:
           fetch-depth: 0
 
       - name: Set up Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: "26"
           cache: npm
@@ -57,13 +57,6 @@ jobs:
 
       - name: Build
         run: npm run build
-
-      - name: Configure the committing identity
-        # Repository-local, never global. This is the identity the finalize
-        # commit carries; it is not a login and grants nothing.
-        run: |
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
 
       - name: Prepare today's lesson
         id: prepare
@@ -165,6 +158,22 @@ jobs:
             --max-turns 20
             --allowedTools Read,Write,Edit,Glob,Grep
             --disallowedTools AskUserQuestion,Bash,WebSearch,WebFetch,Agent
+
+      - name: Configure the committing identity
+        # Deliberately after generation, not before it: the generation action
+        # sets the repository's local git identity to its own bot for the git
+        # work it does in issue and pull-request workflows, which overwrote this
+        # when the step ran earlier. The commit belongs to the finalize CLI, so
+        # the identity is set immediately before it and by nobody else.
+        #
+        # Repository-local, never global. It is not a login and grants nothing.
+        # Skipped along with generation and finalization on `replay` and
+        # `exhausted`, and — like any step without `always()` — never reached if
+        # generation failed.
+        if: steps.prepare.outputs.kind == 'generate'
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
 
       - name: Finalize the day
         # Accepts the generated lesson, appends the history record, commits both
