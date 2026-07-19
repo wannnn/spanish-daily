@@ -107,6 +107,18 @@ jobs:
         uses: anthropics/claude-code-action@v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          # The action always sets up a GitHub token. Given one, it uses it;
+          # given none, it mints a GitHub OIDC token and exchanges it for a
+          # Claude GitHub App token, which requires `id-token: write` and the
+          # App installed on the repository.
+          #
+          # That path exists for workflows that act on issues, pull requests,
+          # and comments as the App. This one does none of that — it is a
+          # scheduled automation that writes a single file — so it takes the
+          # smaller, more direct route and stays independent of any App
+          # installation. The job token is auto-generated, scoped by the
+          # `permissions:` block above, and expires with the job.
+          github_token: ${{ secrets.GITHUB_TOKEN }}
           prompt: |
             Write one Spanish lesson for this project.
 
