@@ -6,6 +6,8 @@ import {
   LessonAcceptanceError,
   LessonPreparationError,
   acceptGeneratedLesson,
+  parseGenerationTask,
+  parsePreparedTask,
   prepareLesson,
   type LessonGenerationTask,
 } from './lessonTask.js';
@@ -520,5 +522,187 @@ describe('acceptGeneratedLesson — canonical form', () => {
       () => acceptGeneratedLesson(task, task.targetPath, document.replace('---\n\n##', '---\n\n\n##')),
       LessonAcceptanceError,
     );
+  });
+});
+
+describe('parseGenerationTask', () => {
+  const valid = {
+    id: 'w0001',
+    word: 'hablar',
+    pos: 'verb',
+    date: TODAY,
+    lessonSchemaVersion: LESSON_SCHEMA_VERSION,
+    targetPath: 'lessons/2026/2026-07-18-w0001.md',
+  };
+
+  it('accepts a task the preparation step produced', () => {
+    const task = taskFor([entry('w0001', 1, 'hablar', 'verb')], []);
+
+    assert.deepEqual(parseGenerationTask(JSON.parse(JSON.stringify(task))), task);
+  });
+
+  it('returns a fresh object rather than the input', () => {
+    const raw = { ...valid };
+
+    const parsed = parseGenerationTask(raw);
+
+    assert.notEqual(parsed, raw);
+    assert.deepEqual(raw, valid);
+  });
+
+  it('rejects a value that is not an object', () => {
+    assert.throws(() => parseGenerationTask('a string'), LessonPreparationError);
+    assert.throws(() => parseGenerationTask(null), LessonPreparationError);
+    assert.throws(() => parseGenerationTask([valid]), { message: /an array/ });
+  });
+
+  it('rejects an unknown field', () => {
+    assert.throws(() => parseGenerationTask({ ...valid, order: 1 }), {
+      name: 'LessonPreparationError',
+      message: /unknown field "order"/,
+    });
+  });
+
+  it('rejects a missing field', () => {
+    const { targetPath, ...withoutPath } = valid;
+
+    assert.throws(() => parseGenerationTask(withoutPath), {
+      message: /missing "targetPath"/,
+    });
+  });
+
+  it('rejects a field of the wrong type', () => {
+    assert.throws(() => parseGenerationTask({ ...valid, word: 7 }), {
+      message: /"word" must be a string/,
+    });
+    assert.throws(() => parseGenerationTask({ ...valid, lessonSchemaVersion: '1' }), {
+      message: /"lessonSchemaVersion" must be a number/,
+    });
+  });
+
+  it('rejects metadata that violates the lesson contract', () => {
+    assert.throws(() => parseGenerationTask({ ...valid, id: 'nope' }), LessonPreparationError);
+    assert.throws(() => parseGenerationTask({ ...valid, pos: 'gerund' }), LessonPreparationError);
+    assert.throws(
+      () => parseGenerationTask({ ...valid, date: '2026-02-30' }),
+      LessonPreparationError,
+    );
+  });
+
+  it('rejects an unsupported schema version', () => {
+    assert.throws(
+      () => parseGenerationTask({ ...valid, lessonSchemaVersion: LESSON_SCHEMA_VERSION + 1 }),
+      LessonPreparationError,
+    );
+  });
+
+  it('rejects a targetPath the metadata does not derive', () => {
+    // The path is the strongest thing in a task — it decides which file is
+    // accepted and committed — so it is re-derived rather than believed.
+    assert.throws(
+      () => parseGenerationTask({ ...valid, targetPath: 'lessons/2026/elsewhere.md' }),
+      { name: 'LessonPreparationError', message: /follows from the id and the date/ },
+    );
+  });
+
+  it('rejects a targetPath that escapes the lessons directory', () => {
+    assert.throws(
+      () => parseGenerationTask({ ...valid, targetPath: '../../etc/passwd' }),
+      LessonPreparationError,
+    );
+  });
+
+  it('round-trips a task through JSON', () => {
+    const task = taskFor([entry('w0042', 1, 'niño', 'noun')], [], '2031-01-09');
+
+    assert.deepEqual(parseGenerationTask(JSON.parse(JSON.stringify(task))), task);
+  });
+});
+
+describe('parsePreparedTask', () => {
+  it('takes the task out of a generate result', () => {
+    const task = taskFor([entry('w0001', 1, 'hablar', 'verb')], []);
+    const prepared = JSON.parse(JSON.stringify({ kind: 'generate', task })) as unknown;
+
+    assert.deepEqual(parsePreparedTask(prepared), task);
+  });
+
+  it('round-trips what prepareLesson produces', () => {
+    const prepared = prepareLesson([entry('w0042', 1, 'niño', 'noun')], [], '2031-01-09');
+
+    assert.deepEqual(
+      parsePreparedTask(JSON.parse(JSON.stringify(prepared))),
+      prepared.kind === 'generate' ? prepared.task : undefined,
+    );
+  });
+
+  it('refuses a replay result — there is no lesson to finalize', () => {
+    const prepared = { kind: 'replay', record: record(TODAY, 'w0001') };
+
+    assert.throws(() => parsePreparedTask(prepared), {
+      name: 'LessonPreparationError',
+      message: /records a replay/,
+    });
+  });
+
+  it('refuses an exhausted result', () => {
+    assert.throws(() => parsePreparedTask({ kind: 'exhausted' }), {
+      name: 'LessonPreparationError',
+      message: /exhausted curriculum/,
+    });
+  });
+
+  it('rejects a generate envelope carrying an extra field', () => {
+    const task = taskFor([entry('w0001', 1, 'hablar', 'verb')], []);
+
+    assert.throws(() => parsePreparedTask({ kind: 'generate', task, note: 'hi' }), {
+      name: 'LessonPreparationError',
+      message: /"generate" result has an unknown field "note"/,
+    });
+  });
+
+  it('rejects a replay envelope carrying an extra field', () => {
+    // The shape is checked before the refusal, so a malformed file is never
+    // reported as a well-formed replay.
+    assert.throws(
+      () => parsePreparedTask({ kind: 'replay', record: record(TODAY, 'w0001'), extra: 1 }),
+      { message: /"replay" result has an unknown field "extra"/ },
+    );
+  });
+
+  it('rejects an exhausted envelope carrying an extra field', () => {
+    assert.throws(() => parsePreparedTask({ kind: 'exhausted', task: {} }), {
+      message: /"exhausted" result has an unknown field "task"/,
+    });
+  });
+
+  it('rejects a replay envelope with no record', () => {
+    assert.throws(() => parsePreparedTask({ kind: 'replay' }), {
+      message: /"replay" result is missing "record"/,
+    });
+  });
+
+  it('rejects an unknown kind', () => {
+    assert.throws(() => parsePreparedTask({ kind: 'something' }), {
+      message: /"kind" of "generate", "replay", or "exhausted"/,
+    });
+  });
+
+  it('rejects a value that is not an object', () => {
+    assert.throws(() => parsePreparedTask('generate'), LessonPreparationError);
+    assert.throws(() => parsePreparedTask(null), LessonPreparationError);
+  });
+
+  it('still validates the task inside a generate result', () => {
+    const task = taskFor([entry('w0001', 1, 'hablar', 'verb')], []);
+
+    assert.throws(
+      () => parsePreparedTask({ kind: 'generate', task: { ...task, id: 'nope' } }),
+      LessonPreparationError,
+    );
+  });
+
+  it('rejects a generate result with no task at all', () => {
+    assert.throws(() => parsePreparedTask({ kind: 'generate' }), LessonPreparationError);
   });
 });

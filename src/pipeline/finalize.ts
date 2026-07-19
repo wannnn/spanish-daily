@@ -29,7 +29,11 @@
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
-import { acceptGeneratedLesson, type LessonGenerationTask } from '../domain/lessonTask.js';
+import {
+  acceptGeneratedLesson,
+  parsePreparedTask,
+  type LessonGenerationTask,
+} from '../domain/lessonTask.js';
 import type { HistoryRecord } from '../domain/types.js';
 import {
   assertChangedPathsAre,
@@ -224,6 +228,63 @@ export async function finalizeLesson(
   }
 
   return { lessonPath, historyPath, commit };
+}
+
+export type FinalizeDailyLessonInput = {
+  /** The worktree root. Not a subdirectory of it. */
+  readonly repositoryRoot: string;
+  /**
+   * Path to the JSON the preparation step printed. Must be outside the
+   * repository working tree — it is scratch data, not repository content.
+   */
+  readonly taskFilePath: string;
+  /** Overrides the message derived from the task. */
+  readonly commitMessage?: string;
+};
+
+/**
+ * Read the task the preparation step produced, then run the durable write.
+ *
+ * The task has been outside the process — written to a file, carried across a
+ * step boundary, possibly edited — so it is validated in full before it is
+ * trusted, including that its `targetPath` is the one its own metadata derives.
+ *
+ * **Recovery is not automatic.** If this fails after the commit was created,
+ * re-running is not guaranteed to work: the lesson and the history record are
+ * already committed locally, so a second run would find a repository that is not
+ * clean and would refuse. Nothing here resets, reverts, checks out, or
+ * force-pushes to make a retry possible; diagnosing and resolving a partial run
+ * is a person's job today.
+ *
+ * @throws {DurableWriteError} The task file could not be read or parsed, or any
+ *   stage of the durable write failed.
+ */
+export async function finalizeDailyLesson(
+  input: FinalizeDailyLessonInput,
+): Promise<DurableWriteResult> {
+  const raw = await during(
+    `reading the generation task at ${input.taskFilePath}`,
+    'Nothing has been written or committed.',
+    () => readFile(input.taskFilePath, 'utf8'),
+  );
+
+  const parsed = await during(
+    `parsing the generation task at ${input.taskFilePath}`,
+    'Nothing has been written or committed.',
+    () => JSON.parse(raw) as unknown,
+  );
+
+  const task = await during(
+    `validating the generation task at ${input.taskFilePath}`,
+    'Nothing has been written or committed.',
+    () => parsePreparedTask(parsed),
+  );
+
+  return finalizeLesson({
+    repositoryRoot: input.repositoryRoot,
+    task,
+    ...(input.commitMessage === undefined ? {} : { commitMessage: input.commitMessage }),
+  });
 }
 
 /**

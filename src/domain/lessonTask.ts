@@ -88,6 +88,178 @@ export class LessonAcceptanceError extends Error {
 /** The metadata fields a document must reproduce exactly, in frontmatter order. */
 const TASK_METADATA_FIELDS = ['id', 'word', 'pos', 'date', 'lessonSchemaVersion'] as const;
 
+/** Every field a task carries, and no others. */
+const TASK_FIELDS = [...TASK_METADATA_FIELDS, 'targetPath'] as const;
+
+/**
+ * Validate a task that has come back from outside the process.
+ *
+ * A task written to a file and read again has crossed a boundary where the
+ * static type means nothing, so every field is checked as if it were untrusted —
+ * because it is.
+ *
+ * `targetPath` is not merely checked for shape: it must be exactly what
+ * `lessonRelativePath` derives from the rest of the task. The path therefore
+ * carries no independent information, and a hand-edited task cannot redirect a
+ * lesson somewhere the metadata does not point.
+ *
+ * @throws {LessonPreparationError} The value is not a trustworthy task.
+ */
+export function parseGenerationTask(raw: unknown): LessonGenerationTask {
+  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) {
+    throw new LessonPreparationError(
+      `A generation task must be a JSON object, but found ${describeType(raw)}.`,
+    );
+  }
+
+  const value = raw as Record<string, unknown>;
+
+  assertExactFields(value, TASK_FIELDS, 'A generation task');
+
+  for (const field of ['id', 'word', 'pos', 'date', 'targetPath'] as const) {
+    if (typeof value[field] !== 'string') {
+      throw new LessonPreparationError(
+        `A generation task's ${JSON.stringify(field)} must be a string, ` +
+          `but found ${describeType(value[field])}.`,
+      );
+    }
+  }
+  if (typeof value['lessonSchemaVersion'] !== 'number') {
+    throw new LessonPreparationError(
+      `A generation task's "lessonSchemaVersion" must be a number, ` +
+        `but found ${describeType(value['lessonSchemaVersion'])}.`,
+    );
+  }
+
+  const metadata: LessonMetadata = {
+    id: value['id'] as string,
+    word: value['word'] as string,
+    pos: value['pos'] as Pos,
+    date: value['date'] as string,
+    lessonSchemaVersion: value['lessonSchemaVersion'],
+  };
+
+  // Derives the path, which also runs the whole metadata contract: a bad id,
+  // word, pos, date, or schema version fails here rather than being carried
+  // forward into a commit.
+  let derivedPath: string;
+  try {
+    derivedPath = lessonRelativePath(metadata);
+  } catch (cause) {
+    throw new LessonPreparationError(
+      `A generation task is not valid: ${cause instanceof Error ? cause.message : String(cause)}`,
+      { cause },
+    );
+  }
+
+  const targetPath = value['targetPath'] as string;
+  if (targetPath !== derivedPath) {
+    throw new LessonPreparationError(
+      `A generation task's "targetPath" is ${JSON.stringify(targetPath)}, but its ` +
+        `metadata derives ${JSON.stringify(derivedPath)}. The path is not a ` +
+        'separate choice — it follows from the id and the date.',
+    );
+  }
+
+  return { ...metadata, targetPath };
+}
+
+/**
+ * Read back exactly what the preparation step printed, and return its task.
+ *
+ * The unit passed between the two steps is a whole `PrepareLessonResult`, not a
+ * bare task: preparation has three outcomes and only one of them carries a task,
+ * so the envelope is what makes the other two legible instead of looking like a
+ * malformed file.
+ *
+ * A `replay` or `exhausted` result is a refusal, not a failure of the file. It
+ * says the day needed no generation, so there is nothing to finalize — and a run
+ * that got this far was sequenced wrongly.
+ *
+ * @throws {LessonPreparationError} The value is not a preparation result, or is
+ *   one that carries no task.
+ */
+export function parsePreparedTask(raw: unknown): LessonGenerationTask {
+  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) {
+    throw new LessonPreparationError(
+      `A prepared result must be a JSON object, but found ${describeType(raw)}.`,
+    );
+  }
+
+  const value = raw as Record<string, unknown>;
+  const kind = value['kind'];
+
+  // Each variant's shape is checked before its outcome is reported, so a
+  // malformed file is never mistaken for a well-formed refusal — "this is not a
+  // preparation result" and "this day needed no lesson" are different problems.
+  switch (kind) {
+    case 'generate':
+      assertExactFields(value, ['kind', 'task'], 'A prepared "generate" result');
+      return parseGenerationTask(value['task']);
+
+    case 'replay':
+      assertExactFields(value, ['kind', 'record'], 'A prepared "replay" result');
+      throw new LessonPreparationError(
+        'This prepared result records a replay: the day was already learned, so no ' +
+          'lesson was generated and there is nothing to finalize.',
+      );
+
+    case 'exhausted':
+      assertExactFields(value, ['kind'], 'A prepared "exhausted" result');
+      throw new LessonPreparationError(
+        'This prepared result records an exhausted curriculum: no word was selected, ' +
+          'so no lesson was generated and there is nothing to finalize.',
+      );
+
+    default:
+      throw new LessonPreparationError(
+        `A prepared result must have a "kind" of "generate", "replay", or ` +
+          `"exhausted", but found ${describeType(kind)}.`,
+      );
+  }
+}
+
+/**
+ * Exactly these fields, no more and no fewer.
+ *
+ * Shared by the two parsers in this module rather than written out four times.
+ * It is deliberately not exported and not a general utility: it exists because
+ * this file validates four closely related object shapes, and a second copy of
+ * the loop would be a second place for the wording to drift.
+ *
+ * @param what How to name the value in an error, e.g. "A generation task".
+ * @throws {LessonPreparationError}
+ */
+function assertExactFields(
+  value: Record<string, unknown>,
+  fields: readonly string[],
+  what: string,
+): void {
+  for (const field of Object.keys(value)) {
+    if (!fields.includes(field)) {
+      throw new LessonPreparationError(
+        `${what} has an unknown field ${JSON.stringify(field)}. ` +
+          `Allowed fields are ${fields.map((name) => `"${name}"`).join(', ')}.`,
+      );
+    }
+  }
+
+  const missing = fields.filter((field) => !(field in value));
+  if (missing.length > 0) {
+    throw new LessonPreparationError(
+      `${what} is missing ${missing.map((name) => `"${name}"`).join(', ')}.`,
+    );
+  }
+}
+
+function describeType(value: unknown): string {
+  if (value === null) return 'null';
+  if (value === undefined) return 'nothing';
+  if (Array.isArray(value)) return 'an array';
+  if (typeof value === 'object') return 'an object';
+  return `${typeof value} (${JSON.stringify(value)})`;
+}
+
 /**
  * Decide what today's run should do, and on `generate` build the task.
  *
