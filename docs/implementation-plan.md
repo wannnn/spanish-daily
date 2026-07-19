@@ -58,7 +58,6 @@ It is not architecture and not a contract. It never decides how the system works
     is rejected and never repaired; it does not re-run `validateLessonBody`,
     because `parseLesson` already runs the whole canonical contract; and an
     invalid `today` fails before any branch, including replay and exhaustion.
-
 - [x] **Stage 1 operational finalize foundations** — `8aa9b6e`
   - `io/historyStore.ts` gains `appendHistoryRecord`; `io/git.ts` is new and
     read-only. Settled: **append creates the file when it is missing** — that is
@@ -78,7 +77,6 @@ It is not architecture and not a contract. It never decides how the system works
     change generation may leave is one new untracked, unstaged file at the task's
     target path**. Repository-root equality is by realpath on both sides, because
     Git resolves symlinks when it reports the worktree root.
-
 - [x] **Stage 1 durable write** — `6b367cb`
   - `pipeline/finalize.ts` is the first composition root: it decides the order of
     operations and nothing else. `io/git.ts` gains the write side. Settled: the
@@ -100,35 +98,64 @@ It is not architecture and not a contract. It never decides how the system works
     failed push, the local commit hash. `GitWriteError` joins
     `GitInspectionError`, mirroring the `HistoryStoreError` / `HistoryLoadError`
     split.
+- [x] **Stage 1 orchestration and CLI** — `897ff5f`
+  - `pipeline/prepare.ts` and two commands, `cli/prepare.ts` and
+    `cli/finalize.ts`. Stage 1 is now runnable end to end by hand, with
+    generation performed externally between the two commands. Settled: **the
+    clean-worktree check runs before generation**, because a tree that is already
+    dirty makes it impossible to tell afterwards what the generation step wrote.
+    `vocabulary.json` and `history.jsonl` are fixed repository-relative paths;
+    only the repository root is an argument, defaulting to the working directory.
+    **A missing `history.jsonl` is the first run inside the pipeline** — the
+    pipeline chose that path, so it cannot be a typo, which is exactly why
+    `loadHistory` itself still refuses to invent an empty history. **The task
+    file is what `prepare` printed, whole**: `finalize` reads a
+    `PrepareLessonResult`, so `prepare > "$F"; finalize "$F"` needs no extraction
+    step and no `jq`, and a file recording a `replay` or `exhausted` day is
+    refused with a message that says so. Every envelope shape is strict, and its
+    shape is checked before its outcome is reported. **The task file must live
+    outside the working tree** — a shell creates a redirection target before the
+    command runs, so `prepare > task.json` inside the repository dirties the tree
+    before `prepare` can inspect it, and written later it is a change generation
+    was not authorized to make. Neither command deletes it. A task read back is
+    validated in full, including that its `targetPath` is what its own metadata
+    derives. Both commands print JSON on stdout and nothing else; `generate`,
+    `replay`, and `exhausted` all exit 0, and `finalize` prints no partial
+    success. **Recovery is not automatic and is not claimed to be**: nothing
+    resets, reverts, checks out, or force-pushes, and a failure after the commit
+    leaves a local commit that a re-run will refuse to work around.
 
 ## Current milestone
 
-**Stage 1 orchestration and CLI** — not started.
+**GitHub Actions generation workflow** — not started.
 
-The milestone that joins the pieces into a run, without yet scheduling one.
+The step that makes the daily run happen without a person driving it. The Node
+side is complete and its boundaries are fixed; this milestone wires them to the
+generation action.
 
-- confirm a clean working tree **before** generation, not only after
-- compose prepare → the external generation boundary → the durable finalize
-- the `replay` and `exhausted` flows, which never reach generation
-- a partial-run recovery policy: an unpushed commit survives on a developer
-  machine, and nothing currently resumes from it
-- the `prepare` and `finalize` CLI contracts
+- scheduled and manual workflow triggers
+- checkout, Node setup, build
+- run the `prepare` CLI, writing its output to the runner temp directory —
+  never into the worktree
+- on `generate`, invoke the Claude Code Action
+- the action writes the canonical lesson from the task and the lesson spec
+- on `replay` or `exhausted`, skip generation and finalization entirely
+- run the `finalize` CLI
+- the OAuth secret, the model argument, and the tool restrictions that keep the
+  agent to one file
+- workflow permissions and a concurrency group
 
 Explicitly out of scope for this milestone:
 
-- the GitHub Actions workflow YAML
-- the Claude Code Action prompt
-- `CLAUDE_CODE_OAUTH_TOKEN` setup
 - Notion
 - Telegram
+- automatic recovery from a partially completed run
 
 ## Remaining milestones
 
-- [ ] Stage 1 orchestration and the prepare / finalize CLI
-- [ ] Claude Code Action workflow and generation prompt
+- [ ] GitHub Actions generation workflow
 - [ ] Notion projection
 - [ ] Telegram notification
-- [ ] GitHub Actions scheduling
 
 ## Open questions
 
@@ -141,8 +168,9 @@ Undecided, and each will block the milestone it belongs to.
 | The exact tool-restriction syntax that keeps the agent to one file | Workflow |
 | `CLAUDE_CODE_OAUTH_TOKEN` setup and the repository secret name | Workflow |
 | Seed vocabulary content — the word list is the maintainer's decision (`docs/vocabulary-spec.md` §1); a small hand-verified set is enough to exercise the pipeline | End-to-end runs |
-| How a partially completed run is recovered — an unpushed commit on a developer machine survives, and nothing currently resumes from it | Orchestration |
-| The Git identity used for commits in GitHub Actions | Scheduling |
+| How a partially completed run is *resumed*, if ever — the policy is now "fail loudly and leave it to a person"; an automatic path would need its own design | A future recovery milestone |
+| Whether `prepare` and `finalize` get npm scripts alongside `today`, or are only ever invoked by the workflow | Workflow |
+| The Git identity used for commits in GitHub Actions | Workflow |
 | The Notion database Title property, and Markdown → Notion block conversion | Notion projection |
 
 ## Verification baseline
@@ -150,10 +178,10 @@ Undecided, and each will block the milestone it belongs to.
 State as of the latest completed milestone. Replace it when a milestone closes;
 do not accumulate history here.
 
-- Latest commit: `6b367cb` on `main`, pushed
+- Latest commit: `897ff5f` on `main`, pushed
 - `npm run typecheck` — passes
 - `npm run build` — passes
-- `npm test` — 459 tests, 459 pass, 0 fail (64 suites)
+- `npm test` — 532 tests, 532 pass, 0 fail (75 suites)
 - Working tree expected clean
 - Dependencies: `typescript` and `@types/node` only — no runtime dependency
 
