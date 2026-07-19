@@ -151,36 +151,56 @@ It is not architecture and not a contract. It never decides how the system works
     committed. `show_full_output` is left off so tool output and file contents stay
     out of the Actions log.
 
+- [x] **First hosted workflow validation** — run
+  [29690769583](https://github.com/wannnn/spanish-daily/actions/runs/29690769583),
+  which produced lesson commit `297722f`
+  - The first end-to-end run on a real runner, triggered by `workflow_dispatch`.
+    It succeeded in 1m24s and the whole chain is now verified in the only place
+    it could be: prepare → Claude Code Action → finalize → push.
+
+    Confirmed by the run's own log rather than by inference:
+
+    - The `CLAUDE_CODE_OAUTH_TOKEN` secret authenticates.
+    - The supplied-token path is taken —
+      `Using provided GITHUB_TOKEN for authentication`, with no
+      `Requesting OIDC token...` anywhere. `id-token: write` is genuinely not
+      needed, and no GitHub App is installed.
+    - **`contents: write` alone is enough**, which settles the question that
+      could not be answered off a hosted runner.
+    - The model argument is accepted: `"model": "claude-sonnet-5"`.
+    - The tool restrictions are not too tight —
+      `permission_denials_count: 0` across 5 turns. `Read,Write,Edit,Glob,Grep`
+      was sufficient to write a lesson.
+    - The lesson and the history record landed in **one commit of exactly two
+      files**, and the push reached the remote.
+    - The generated document passed the acceptance gate unchanged: it parses,
+      its metadata equals the task, and it is byte-identical to canonical form
+      (`renderLesson(parseLesson(document)) === document`) on the first attempt.
+
+    Fixed by the same milestone: the **committing identity was being overwritten
+    by the generation action**, whose `bot_name` / `bot_id` defaults set the
+    repository-local git identity for the git work it does in issue and
+    pull-request workflows. The first lesson commit is therefore authored by
+    `claude[bot]`. The identity step now runs after generation and immediately
+    before finalize, so the commit belongs to the CLI that makes it. Also
+    upgraded `actions/setup-node` from v4 to v6, which moves the action off the
+    deprecated Node 20 runtime the run warned about.
+
 ## Current milestone
 
-**First hosted workflow validation** — not started.
+**Post-generation projections** — not started.
 
-Everything up to this point was verified locally. This milestone is the first
-run on a real runner, and it exists because several things simply cannot be
-checked anywhere else.
+Stage 1 is complete and running. Everything after it is a projection of
+canonical data that already exists in Git, and none of it may gate whether a day
+counts as learned (`docs/architecture.md` §1, §5).
 
-- create the `CLAUDE_CODE_OAUTH_TOKEN` value with `claude setup-token` and add it
-  as a repository secret
-- add an initial `vocabulary.json`
-- run the workflow once through `workflow_dispatch`
-- read the real Actions log and confirm: the action authenticates; the model
-  argument is accepted; the tool restrictions hold; `contents: write` alone is
-  enough; the lesson the agent writes passes the acceptance gate unchanged; and
-  the commit reaches the remote
-- fix only what a real hosted run exposes
-
-Explicitly out of scope for this milestone:
-
-- Notion
-- Telegram
-- any further local simulation of the action
-- automatic recovery from a partially completed run
+This entry is a handoff marker, not a design. The scope, the order of the two
+adapters, and every open question about them are decided when the milestone
+starts.
 
 ## Remaining milestones
 
-- [ ] First hosted workflow validation
-- [ ] Notion projection
-- [ ] Telegram notification
+- [ ] Post-generation projections — Notion, then Telegram
 
 ## Open questions
 
@@ -188,9 +208,6 @@ Undecided, and each will block the milestone it belongs to.
 
 | Question | Blocks |
 |---|---|
-| Creating the `CLAUDE_CODE_OAUTH_TOKEN` value with `claude setup-token` and adding it as a repository secret — the workflow reads it, but nobody has created it yet | First hosted workflow validation |
-| Whether the action, in automation mode on a schedule, ever needs `issues` or `pull-requests` permissions; the workflow grants only `contents: write` and this is not verifiable off a hosted runner | First hosted workflow validation |
-| Seed vocabulary content — the word list is the maintainer's decision (`docs/vocabulary-spec.md` §1); a small hand-verified set is enough to exercise the pipeline | First hosted workflow validation |
 | How a partially completed run is *resumed*, if ever — the policy is now "fail loudly and leave it to a person"; an automatic path would need its own design | A future recovery milestone |
 | The Notion database Title property, and Markdown → Notion block conversion | Notion projection |
 
