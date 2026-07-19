@@ -59,24 +59,50 @@ It is not architecture and not a contract. It never decides how the system works
     because `parseLesson` already runs the whole canonical contract; and an
     invalid `today` fails before any branch, including replay and exhaustion.
 
+- [x] **Stage 1 operational finalize foundations** — `8aa9b6e`
+  - `io/historyStore.ts` gains `appendHistoryRecord`; `io/git.ts` is new and
+    read-only. Settled: **append creates the file when it is missing** — that is
+    day one — while **`loadHistory` still fails on a missing file**, because a
+    read of history that is not there is a caller's mistake. A duplicate `date`
+    or `id` is refused rather than absorbed; an append is not a replay API. The
+    whole existing file must pass `parseHistory` before anything is written, and
+    existing bytes are copied through untouched, so a history already using CRLF
+    or carrying blank lines is never silently rewritten. Durability is
+    single-process — temp file in the target's own directory, exclusive create,
+    then rename — with no lock and no support for concurrent writers.
+    Inspection reads `git status --porcelain=v1 -z --untracked-files=all` through
+    a non-shell invocation, so paths containing spaces, quotes, non-ASCII, or
+    newlines survive intact; ignored files never count; ordering is by code unit.
+    **Stage 1 requires a completely clean worktree to begin**, which settles
+    `docs/architecture.md` §8 in the "refuse to run" direction, and **the only
+    change generation may leave is one new untracked, unstaged file at the task's
+    target path**. Repository-root equality is by realpath on both sides, because
+    Git resolves symlinks when it reports the worktree root.
+
 ## Current milestone
 
-**Stage 1 operational finalize foundations** — not started.
+**Stage 1 durable write** — not started.
 
-The first milestone that touches operational state. It builds the IO the rest of
-finalize will stand on, and stops short of performing the durable write:
+The step that makes a day complete. It composes what the last two milestones
+built into one durable write, and still stops short of the scheduled run.
 
-- **history append** — add one record to `history.jsonl`.
-- **Git changed-file inspection** — read which files the working tree has
-  changed, so the acceptance gate's file-scope check has something to ask.
-- **dirty working tree semantics** — decide and implement what Stage 1 does when
-  the local repository is not clean (`docs/architecture.md` §8 leaves this open).
-- the IO contracts the later staging, commit, and push step will build on.
+- verify that generation left exactly the one expected lesson change
+- accept the lesson document
+- append the history record
+- stage exactly the lesson path and the history path
+- create a single commit carrying both
+- push it
+- report durable completion only after the push succeeds
+- failure ordering and recovery semantics throughout
+
+Build this as composable capability, not as a finished workflow: the ordering
+rule — nothing appended and nothing committed until every acceptance check has
+passed — is the part that must be testable on its own.
 
 Explicitly out of scope for this milestone:
 
-- the Git commit and push implementation itself
-- full daily orchestration of Stage 1
+- the complete scheduled daily orchestration
+- the prepare / finalize CLI
 - the GitHub Actions workflow YAML
 - the Claude Code Action prompt
 - `CLAUDE_CODE_OAUTH_TOKEN` setup
@@ -85,8 +111,6 @@ Explicitly out of scope for this milestone:
 
 ## Remaining milestones
 
-- [ ] Stage 1 operational finalize foundations: history append, Git inspection,
-      dirty working tree
 - [ ] Stage 1 durable write: staging, the single commit, and the push
 - [ ] Stage 1 orchestration and the prepare / finalize CLI
 - [ ] Claude Code Action workflow and generation prompt
@@ -105,8 +129,7 @@ Undecided, and each will block the milestone it belongs to.
 | The exact tool-restriction syntax that keeps the agent to one file | Workflow |
 | `CLAUDE_CODE_OAUTH_TOKEN` setup and the repository secret name | Workflow |
 | Seed vocabulary content — the word list is the maintainer's decision (`docs/vocabulary-spec.md` §1); a small hand-verified set is enough to exercise the pipeline | End-to-end runs |
-| Whether `history.jsonl` missing means "first run" outside the CLI, where `cli/today.ts` currently makes that call at its own composition boundary | Operational finalize foundations |
-| How Stage 1 handles an unclean local repository — handle it or refuse to run (`docs/architecture.md` §8) | Operational finalize foundations |
+| Whether the durable write stages the lesson and the history record with explicit paths or with a single staged commit of the expected set | Durable write |
 | The Git identity used for commits in GitHub Actions | Scheduling |
 | The Notion database Title property, and Markdown → Notion block conversion | Notion projection |
 
@@ -115,10 +138,10 @@ Undecided, and each will block the milestone it belongs to.
 State as of the latest completed milestone. Replace it when a milestone closes;
 do not accumulate history here.
 
-- Latest commit: `97924eb` on `main`, pushed
+- Latest commit: `8aa9b6e` on `main`, pushed
 - `npm run typecheck` — passes
 - `npm run build` — passes
-- `npm test` — 334 tests, 334 pass, 0 fail (46 suites)
+- `npm test` — 411 tests, 411 pass, 0 fail (54 suites)
 - Working tree expected clean
 - Dependencies: `typescript` and `@types/node` only — no runtime dependency
 
