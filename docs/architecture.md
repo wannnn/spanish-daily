@@ -552,9 +552,20 @@ notify(input: { word: string, date: string, link?: string }, config): Promise<vo
 - Defined once as a constant in code, never as an environment variable. It does
   not vary by environment, and an env var only adds a place to forget it.
 - Never read the host's local date. Compute "today" explicitly in `Asia/Taipei`.
-- GitHub Actions cron is interpreted in UTC and does not understand `Asia/Taipei`.
-  Convert the schedule and record the conversion in a comment in the workflow file.
 - Taiwan observes no daylight saving, so UTC+8 is fixed year-round.
+
+**The schedule and the date are two different things.** A scheduled workflow
+states its own timezone — `Asia/Taipei`, the same one — so the trigger reads as
+the intent rather than as a hand-converted UTC time. That only decides *when the
+run is asked to start*. It never supplies the date: "today" is still computed by
+`domain/date.ts` from the instant the run actually begins.
+
+Keeping them separate is what makes a late run harmless. GitHub delays scheduled
+runs under load, and may drop them outright; the start of every hour is a named
+high-load time, so the schedule avoids it. A delayed run is still correct,
+because it takes the Taipei date of the moment it runs. A dropped run costs that
+day's lesson and nothing more: selection takes the unlearned word with the lowest
+`order`, so the word simply moves to the next day and the curriculum stays intact.
 
 ## 12. Testing
 
