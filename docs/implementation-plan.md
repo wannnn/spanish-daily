@@ -145,8 +145,8 @@ It is not architecture and not a contract. It never decides how the system works
     `github-actions[bot]`, set repository-locally, which settles the Git identity
     question; concurrency is a fixed group with `cancel-in-progress: false`,
     because a cancelled run may already have committed and be partway through
-    pushing; the schedule is `0 0 * * *` UTC, which is 08:00 Asia/Taipei
-    year-round. **Tool restrictions are one layer, not a sandbox** — the prompt and
+    pushing; the schedule was `0 0 * * *` UTC, since corrected — see the hosted
+    validation entry below. **Tool restrictions are one layer, not a sandbox** — the prompt and
     the Node acceptance gate are the others, and only the gate decides what is
     committed. `show_full_output` is left off so tool output and file contents stay
     out of the Actions log.
@@ -185,6 +185,25 @@ It is not architecture and not a contract. It never decides how the system works
     before finalize, so the commit belongs to the CLI that makes it. Also
     upgraded `actions/setup-node` from v4 to v6, which moves the action off the
     deprecated Node 20 runtime the run warned about.
+
+    The **first scheduled run** —
+    [29712720252](https://github.com/wannnn/spanish-daily/actions/runs/29712720252),
+    lesson commit `e41b139` — then succeeded unattended and confirmed the identity
+    fix: it is authored by `github-actions[bot]`, not `claude[bot]`.
+
+    It also exposed the schedule itself. Asked for 00:00 UTC, it started at
+    02:30 UTC — **about two and a half hours late**. `0 0 * * *` is both the top
+    of an hour and UTC midnight, which GitHub names as a high-load time where
+    runs are delayed and may be dropped. The schedule is now
+    `30 8 * * *` with `timezone: "Asia/Taipei"`, which states the product's
+    timezone directly and stays off the hour. This also corrected
+    `docs/architecture.md` §11, which claimed GitHub cron is UTC-only and cannot
+    understand `Asia/Taipei`; the `timezone` key exists, so that was simply out
+    of date. The section now separates the two concerns it had conflated: the
+    schedule decides when a run is asked to start, while `domain/date.ts` still
+    computes the date from the instant it actually begins — which is why a
+    delayed run stays correct, and a dropped one costs only that day, since
+    selection just carries the word to the next.
 
 ## Current milestone
 
