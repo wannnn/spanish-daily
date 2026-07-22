@@ -207,14 +207,14 @@ It is not architecture and not a contract. It never decides how the system works
 
 ## Current milestone
 
-**Static lesson web application** — not started; architecture settled, first slice
-defined below.
+**Static lesson web application** — in progress; the first slice is completed and
+live, the next slice is defined below.
 
 Stage 1 is complete and running. The website is the first projection of the
 canonical data already in Git, and it may not gate whether a day counts as learned
 (`docs/architecture.md` §1, §5, §6). Its shape and boundaries are fixed in
 `docs/architecture.md` §10; this entry records the milestone scope, the settled
-build decisions, and the first slice.
+build decisions, the completed first slice, and the next slice.
 
 **In scope for version 1:**
 
@@ -271,31 +271,48 @@ backend is planned.
 - No generic projection framework, repository abstraction, plugin system, or
   scaffolding for the deferred candidates (`docs/architecture.md` §1).
 
-### First slice
+### First slice — completed
 
-The smallest vertical that de-risks the two hardest integration points —
-`parseLesson` reuse and base-path / workflow separation — before any archive or
-homepage work:
+The smallest vertical that de-risked the two hardest integration points —
+`parseLesson` reuse and base-path / workflow separation. Scaffolded Astro in `web/`,
+a filesystem loader that runs each `lessons/**/*.md` through the compiled
+`dist/src/domain/lesson.js` `parseLesson`, `marked` GFM rendering, one static route
+per lesson at `/lessons/YYYY-MM-DD-id/`, a mobile-first base layout linking a
+minimal manifest with a provisional SVG icon, and a separate Pages workflow.
 
-1. Scaffold Astro in `web/` (`output: 'static'`, with `site` + `base` set for the
-   project page).
-2. `web/src/lib/lessons.ts`: filesystem-read `lessons/**/*.md` from the repository
-   root and run each document through the compiled `dist/src/domain/lesson.js`
-   `parseLesson`.
-3. Render the Markdown body to HTML with `marked` — GFM tables must render, the
-   conjugation tables being the test.
-4. **One** static route, `/lessons/YYYY-MM-DD-id/`, rendering one real committed
-   lesson (its frontmatter fields plus the full body) under a mobile-first base
-   layout that links a minimal manifest with a provisional icon and
-   `display: standalone`.
-5. A **separate** GitHub Pages workflow (`.github/workflows/pages.yml`) that runs
-   the root build, then the Astro build, and deploys — distinct from, and never
-   entangled with, `daily-lesson.yml`.
-6. Verify on the live project-page URL that the base path resolves — assets and the
-   lesson route load correctly under `/spanish-daily/`.
+- **Commit:** `d3221d4` (`feat: add static lesson website`). Also scoped the root
+  `tsconfig.json` to `include: ["src"]` so the root `tsc` build never compiles the
+  site.
+- **Pages workflow run:**
+  [29933929653](https://github.com/wannnn/spanish-daily/actions/runs/29933929653) —
+  succeeded, single `build-deploy` job (root `npm ci` + build → web `npm ci` +
+  build → configure / upload / deploy Pages).
+- **Deployed:** https://wannnn.github.io/spanish-daily/
+- **Chain verified end to end, live:** canonical lessons → compiled `parseLesson` →
+  build-time Markdown → GFM HTML → Astro static routes → GitHub Pages
+  artifact / deployment → readable under the project-page base `/spanish-daily/`.
+- All **4** existing lesson routes were generated and return 200; a non-existent
+  slug returns 404. The `manifest`, the `icon`, and the lesson links carry the base
+  path with no 404. The `hablar` page renders its **8** GFM conjugation tables. The
+  root stub and a single-lesson page both open on the live URL.
 
-**Not in this slice:** the lesson archive, the homepage, and search. Archive and
-homepage follow only once the single-lesson render and the deploy chain are proven.
+**On the provisional root stub:** its `lessons[0]` is only the first slice's sample
+choice for reaching a lesson during verification. It is **not** the final homepage
+behaviour and **not** a `w0001` hardcode; the real homepage replaces it with an
+explicit newest-first ordering in the next slice.
+
+### Next slice — Lesson archive homepage
+
+Replace the provisional root stub with the real homepage.
+
+- The homepage lists **all** canonical lessons.
+- Ordered by lesson metadata `date`, **newest first**; ties broken by `id` as a
+  stable tie-breaker.
+- Each entry links to its existing `/lessons/YYYY-MM-DD-id/` page.
+- Mobile-first, consistent with the base layout.
+
+**Not in this slice:** search, a Service Worker, and notification. No change to the
+canonical lesson schema, and no backend or extra abstraction.
 
 ## Remaining milestones
 
@@ -310,8 +327,7 @@ Undecided, and each will block the milestone it belongs to.
 | Question | Blocks |
 |---|---|
 | How a partially completed run is *resumed*, if ever — the policy is now "fail loudly and leave it to a person"; an automatic path would need its own design | A future recovery milestone |
-| The Pages workflow's exact trigger and path scoping, and how it sequences the root `tsc` build before the Astro build | Static lesson web application (first slice) |
-| Component layout, styling, and the final (non-provisional) icons and visual design | Static lesson web application (after the first slice) |
+| Component layout, styling, and the final (non-provisional) icons and visual design | Static lesson web application (homepage and beyond) |
 | Firebase Cloud Messaging setup and the minimal Service Worker it needs | Notification (future) |
 
 ## Verification baseline
