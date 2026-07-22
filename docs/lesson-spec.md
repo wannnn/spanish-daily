@@ -11,14 +11,14 @@ the generator receives, what it must produce, and how its prompt is structured.
 Pipeline position:
 
 ```
-vocabulary entry  ->  lesson generation  ->  canonical lesson in Git  ->  projections / notifications
+vocabulary entry  ->  lesson generation  ->  canonical lesson in Git  ->  read-only projections
 ```
 
 The canonical lesson in Git is the destination this document is responsible for.
-Projections (such as Notion) and notifications are downstream consumers of that
+Downstream projections — the static website, and any future consumer — read that
 canonical content and are out of scope here.
 
-Only the generation contract is specified here. No API, Notion, Telegram, or
+Only the generation contract is specified here. No projection, delivery, or
 Actions integration is built by this document. Authoritative sources for adjacent
 areas: the vocabulary data contract lives in `docs/vocabulary-spec.md`; the
 application architecture, pipeline stages, and boundaries live in
