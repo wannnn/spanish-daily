@@ -207,12 +207,14 @@ It is not architecture and not a contract. It never decides how the system works
 
 ## Current milestone
 
-**Static lesson web application** — not started.
+**Static lesson web application** — not started; architecture settled, first slice
+defined below.
 
 Stage 1 is complete and running. The website is the first projection of the
 canonical data already in Git, and it may not gate whether a day counts as learned
 (`docs/architecture.md` §1, §5, §6). Its shape and boundaries are fixed in
-`docs/architecture.md` §10; this entry records the milestone scope only.
+`docs/architecture.md` §10; this entry records the milestone scope, the settled
+build decisions, and the first slice.
 
 **In scope for version 1:**
 
@@ -234,10 +236,66 @@ client-side search, Firebase Cloud Messaging notification, and the minimal Servi
 Worker notification requires. No login, user account, progress sync, or application
 backend is planned.
 
-**Not decided here, and not to be assumed:** UI layout, visual design, URL
-structure, framework choice, component architecture, and any Firebase detail. Do
-not build a generic projection framework, a repository abstraction, a plugin
-system, or scaffolding for the deferred candidates.
+### Settled build decisions
+
+- **Framework: Astro, static output** (`output: 'static'`). Chosen over Vite +
+  React: SSG with zero client JS by default is the native model for a read-only
+  content projection, while React would need a bolted-on SSG layer and ships a
+  client runtime the v1 has no interactivity to justify. Islands keep the future
+  search and notification additions local, and a React island stays available later
+  if a widget wants one.
+- **Location:** the site lives in `web/` with its **own `package.json`**. No npm
+  workspace, no shared package, and no dependency added to the root.
+- **Canonical reuse — no second parser.** The site reads lessons through the
+  existing `parseLesson` (`src/domain/lesson.ts`). It does **not** copy the parser,
+  reimplement the frontmatter, use Astro Content Collections to parse canonical
+  lessons, add a resolver alias, or introduce a shared package. `src/content/` is
+  deliberately not used for the lessons.
+- **How `parseLesson` is consumed:** the Pages workflow runs the **root `tsc` build
+  first**, then the site imports the **compiled** `dist/src/domain/lesson.js`.
+  Importing the `.ts` source is avoided because a Vite-based resolver does not
+  rewrite the NodeNext `.js` import specifiers `parseLesson` uses.
+- **Loader:** `web/src/lib/lessons.ts` reads `lessons/**/*.md` from the repository
+  root at build time via the **filesystem** — not an Astro glob of `src/content/` —
+  and passes each document through the compiled `parseLesson`.
+- **Body rendering:** the Markdown body is rendered to HTML by a small,
+  **GFM-table-capable** renderer; **`marked`** is the current choice. It is a
+  `web/`-local dependency only. (The conjugation tables are the test of correctness.)
+- **URL scheme:** `/lessons/YYYY-MM-DD-id/`, matching the canonical filename
+  `lessons/YYYY/YYYY-MM-DD-{id}.md`.
+- **GitHub Pages target:** the project page `wannnn.github.io/spanish-daily` first.
+  Astro `site` and `base` hold the Pages path centrally (`base: '/spanish-daily/'`);
+  no page hardcodes the repo base.
+- A **provisional icon** is acceptable and does not block the first slice; the final
+  visual design and icons stay deferred.
+- No generic projection framework, repository abstraction, plugin system, or
+  scaffolding for the deferred candidates (`docs/architecture.md` §1).
+
+### First slice
+
+The smallest vertical that de-risks the two hardest integration points —
+`parseLesson` reuse and base-path / workflow separation — before any archive or
+homepage work:
+
+1. Scaffold Astro in `web/` (`output: 'static'`, with `site` + `base` set for the
+   project page).
+2. `web/src/lib/lessons.ts`: filesystem-read `lessons/**/*.md` from the repository
+   root and run each document through the compiled `dist/src/domain/lesson.js`
+   `parseLesson`.
+3. Render the Markdown body to HTML with `marked` — GFM tables must render, the
+   conjugation tables being the test.
+4. **One** static route, `/lessons/YYYY-MM-DD-id/`, rendering one real committed
+   lesson (its frontmatter fields plus the full body) under a mobile-first base
+   layout that links a minimal manifest with a provisional icon and
+   `display: standalone`.
+5. A **separate** GitHub Pages workflow (`.github/workflows/pages.yml`) that runs
+   the root build, then the Astro build, and deploys — distinct from, and never
+   entangled with, `daily-lesson.yml`.
+6. Verify on the live project-page URL that the base path resolves — assets and the
+   lesson route load correctly under `/spanish-daily/`.
+
+**Not in this slice:** the lesson archive, the homepage, and search. Archive and
+homepage follow only once the single-lesson render and the deploy chain are proven.
 
 ## Remaining milestones
 
@@ -252,8 +310,8 @@ Undecided, and each will block the milestone it belongs to.
 | Question | Blocks |
 |---|---|
 | How a partially completed run is *resumed*, if ever — the policy is now "fail loudly and leave it to a person"; an automatic path would need its own design | A future recovery milestone |
-| Framework choice, URL structure, component architecture, and visual design for the site | Static lesson web application |
-| How the Pages deployment workflow is triggered and scoped so it never entangles with the daily lesson workflow | Static lesson web application |
+| The Pages workflow's exact trigger and path scoping, and how it sequences the root `tsc` build before the Astro build | Static lesson web application (first slice) |
+| Component layout, styling, and the final (non-provisional) icons and visual design | Static lesson web application (after the first slice) |
 | Firebase Cloud Messaging setup and the minimal Service Worker it needs | Notification (future) |
 
 ## Verification baseline
