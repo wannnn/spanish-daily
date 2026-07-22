@@ -1,0 +1,28 @@
+---
+// The single-lesson page. One static route per canonical lesson at
+// `/lessons/YYYY-MM-DD-id/`, matching the canonical filename stem.
+import Base from '../../layouts/Base.astro';
+import { loadLessons } from '../../lib/lessons';
+
+export async function getStaticPaths() {
+  const lessons = await loadLessons();
+  return lessons.map((lesson) => ({
+    params: { slug: lesson.slug },
+    props: { lesson },
+  }));
+}
+
+const { lesson } = Astro.props;
+const { metadata, bodyHtml } = lesson;
+---
+
+<Base title={metadata.word}>
+  <article>
+    <h1>{metadata.word}</h1>
+    <p style="color: var(--muted); margin-top: -0.5rem;">
+      {metadata.pos} · {metadata.date}
+    </p>
+    <!-- Body is canonical, human-reviewed Markdown rendered to HTML by marked. -->
+    <Fragment set:html={bodyHtml} />
+  </article>
+</Base>

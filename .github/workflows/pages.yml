@@ -1,0 +1,80 @@
+# Deploys the read-only static website to GitHub Pages.
+#
+# This is a PROJECTION, deliberately separate from the daily lesson pipeline
+# (docs/architecture.md §5, §10). It never generates, accepts, or commits a
+# lesson; it only rebuilds the site from canonical data already in Git. A failure
+# here cannot affect whether a day counts as learned — that is settled by
+# `daily-lesson.yml` alone, in its own concurrency group.
+#
+# The website reuses the ONE canonical parser: the root build emits
+# `dist/src/domain/lesson.js`, then the site imports it. So the root build runs
+# before the site build, in that order, in a single job.
+
+name: Deploy Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# Read the repo; mint the Pages deployment token. No `contents: write` — this
+# workflow commits nothing.
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# One Pages deployment at a time. A separate group from `daily-lesson`, so the
+# two workflows never serialize against or cancel each other.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build-deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v6
+
+      - name: Set up Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: "26"
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            web/package-lock.json
+
+      # Root build first: emits the compiled canonical parser the site imports.
+      - name: Install root dependencies
+        run: npm ci
+
+      - name: Build root (compiles dist/src/domain/lesson.js)
+        run: npm run build
+
+      # Then the site, which reads lessons/**/*.md and imports the compiled parser.
+      - name: Install web dependencies
+        run: npm ci
+        working-directory: web
+
+      - name: Build web (includes artifact assertions)
+        run: npm run build
+        working-directory: web
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: web/dist
+
+      - name: Deploy to GitHub Pages
+        id: deploy
+        uses: actions/deploy-pages@v4

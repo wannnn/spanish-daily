@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Spanish Daily">
+  <!-- Provisional icon only. The final iPhone app icon and apple-touch-icon are
+       deferred to the visual-design slice. -->
+  <rect width="512" height="512" rx="96" fill="#1f2933" />
+  <text x="50%" y="50%" dy="0.08em" text-anchor="middle" dominant-baseline="middle"
+        font-family="system-ui, -apple-system, sans-serif" font-size="248" font-weight="700"
+        fill="#f9fafb">ES</text>
+</svg>
