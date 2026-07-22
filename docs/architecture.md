@@ -23,22 +23,24 @@ Parts of it are not implemented yet, and it does not track that —
 
 ## 1. Architectural principles
 
-### A content system, not a Notion system
+### A content system, not a website
 
 This is a Spanish learning **content** system built to evolve for years. It is not
-a Notion-based system, and Notion holds no privileged position over any other
-consumer.
+a website with a content store bolted on: the website is one consumer of the
+canonical content and holds no privileged position over any other consumer.
 
 - `lessons/**/*.md` is the **canonical lesson content**: a first-class Git
   artifact, not a cache and not a byproduct.
-- Notion, Telegram, and any future static website, mobile app, or search index are
-  **external adapters / projections**. None of them belongs to the core domain.
+- The static website, and any future search index, mobile app, or notification
+  channel, are **read-only projections** of that content. None of them belongs to
+  the core domain.
 - Every projection must be re-derivable from the canonical data in Git alone. If a
   projection is destroyed, it can be rebuilt and nothing is lost with it.
 - The core domain — vocabulary selection, history, lesson generation, and the
   lesson content model — must not depend on any presentation platform.
 - **The completion semantics of the pipeline must not depend on any projection.**
-  No external service may veto whether a day counts as learned.
+  Neither a site build nor any external service may veto whether a day counts as
+  learned.
 
 ### Future-proof the boundaries, not the feature set
 
@@ -95,9 +97,9 @@ src/
     historyStore.ts
     git.ts                     (planned)
 
-  integrations/                one file per external platform (all planned)
-    notion.ts                  lesson projection
-    telegram.ts                notification
+  integrations/                one file per consumer that reads canonical content;
+                               no members yet — Notion and Telegram were dropped,
+                               and the website is a separate build (§10)
 
   pipeline/                    (planned)
     prepare.ts                 selection → task context
@@ -130,9 +132,9 @@ such as canonical paths actually need a home.
 - `pipeline/` may depend on everything. It is the **composition root** and the
   only place in the system permitted to name an adapter by name.
 
-Adapters are named after their platform (`notion.ts`, `telegram.ts`), not after
-a generic role. An honest name keeps the boundary visible and makes "add another
-consumer" obviously additive.
+Any adapter is named after its platform, not after a generic role — an honest name
+keeps the boundary visible and makes "add another consumer" obviously additive.
+There are no adapters today; when one is added it follows this rule.
 
 Clock, filesystem, and network are injected at the edges. The domain layer does
 not know they exist.
@@ -143,13 +145,12 @@ not know they exist.
 |---|---|---|---|
 | Which words, in what order | `vocabulary.json` (Git) | **human only** | The system reads it and never writes it. See `docs/vocabulary-spec.md`. |
 | What has been learned | `history.jsonl` (Git) | system, append-only | The learned set is *derived* from it; never stored separately. |
-| Lesson content | `lessons/**/*.md` (Git) | the generation action, written once | Canonical, and accepted by finalize before it is committed. Notion is its projection. |
-| Notion pages | **not a source of truth** | system | Disposable and rebuildable. |
-| Telegram messages | stateless | system | Carry no state whatsoever. |
+| Lesson content | `lessons/**/*.md` (Git) | the generation action, written once | Canonical, and accepted by finalize before it is committed. The website is its projection. |
+| The website | **not a source of truth** | a separate build | Static HTML, disposable and rebuildable from Git. |
 | Today's date | derived from `Asia/Taipei` (§11) | — | Never read from the host locale. |
 
-**Test of the boundary:** if Notion and Telegram both disappeared, the system
-would still be complete. Nothing of value lives only outside Git.
+**Test of the boundary:** if the website and every other projection disappeared,
+the system would still be complete. Nothing of value lives only outside Git.
 
 ### `history.jsonl`
 
@@ -164,8 +165,9 @@ be removed from the vocabulary while its `id` remains in the history, and `id`s
 are never reused (`docs/vocabulary-spec.md` §2), so a history record must stay
 self-describing and readable on its own.
 
-No `lessonSchemaVersion`, no `promptVersion`, and no `notionPageId`. A projection
-identifier must never enter the source of truth.
+No `lessonSchemaVersion`, no `promptVersion`, and no projection identifier of any
+kind — no page ID, no build ID, no URL. A projection identifier must never enter
+the source of truth.
 
 ## 4. The canonical Lesson content model
 
@@ -356,30 +358,19 @@ type SelectionResult =
   `null`, `undefined`, or a thrown exception. The run then exits 0.
 - Spaced review is a future feature and no part of this (§13).
 
-### Stage 2 — PROJECTION
+### After Stage 1: projections are not pipeline stages
 
-| | |
-|---|---|
-| **Input** | the canonical Lesson, read from Git via `parseLesson`, plus adapter configuration |
-| **Output** | a Notion page (side effect); returns a URL held in memory only |
-| **Idempotency** | the adapter's own upsert, keyed on `id` |
-| **Failure** | non-zero exit so the scheduler reports failure — but **no rollback**, and committed canonical data is never touched or regenerated |
+Stage 1 is the whole of the daily pipeline. Reading the lessons is a **projection**
+and is deliberately *not* a stage of the daily run:
 
-**This stage runs whether or not Stage 1 was skipped.** Running it
-unconditionally is what makes a failed projection self-healing on the next run:
-the lesson is already canonical, so the retry re-projects from Git instead of
-calling Claude again. No status field is required to achieve this.
+- **The website** is a read-only static projection, built and deployed by its own
+  workflow — never inside the daily run. Its contract is §10.
+- **Notification** is deferred entirely; it is a future candidate, not built (§13).
 
-### Stage 3 — NOTIFICATION
-
-| | |
-|---|---|
-| **Input** | `{ word, date, link? }` — `link` is a platform-neutral URL supplied by the projection stage |
-| **Idempotency** | fires **only** when Stage 1 wrote a record during this run |
-| **Failure** | warning only; does not affect the exit code |
-
-A notification is a one-shot event, not a projection. It is never replayed, so a
-re-run never re-notifies.
+A projection never decides whether a day is complete (§1, §6). The canonical write
+already happened in Stage 1; if a later site build fails, the day is still learned,
+and the next build re-derives the whole site from Git. This is why the daily
+pipeline needs no projection stage and no status field to stay self-healing.
 
 ## 6. Completion semantics and the canonical-first durable write
 
@@ -413,12 +404,12 @@ by a `concurrency` group in the workflow, not by a lock in the application.
 |---|---|---|
 | The same word selected twice | selection draws from the complement of the learned set | structurally impossible |
 | Generating twice in one day | today's history record already exists ⇒ Stage 1 skipped | Stage 1 entry |
-| Duplicate Notion pages | query by `id`, then update or create | adapter |
 | Duplicate history rows | same guard as Stage 1 | Stage 1 entry |
-| Duplicate notifications | Stage 3 fires only on a fresh Stage 1 write | Stage 3 entry |
+| A stale website | every build regenerates the whole site from Git | the site build |
 
-Each stage carries the idempotency mechanism appropriate to its nature: Stage 1 is
-guarded by committed state, Stage 2 by an upsert, Stage 3 by a one-shot condition.
+Stage 1 is guarded by committed state. The website carries no incremental state to
+corrupt: each build is a full re-derivation from canonical data, so re-running it
+is always safe.
 
 ## 8. Failure and retry behaviour
 
@@ -430,8 +421,7 @@ guarded by committed state, Stage 2 by an upsert, Stage 3 by a one-shot conditio
 | Lesson generation (the action) | a file may be left in the working tree | abort; nothing is appended or committed | ≠0 | regenerates |
 | **Lesson acceptance** | a rejected file may be left in the working tree | abort; **history untouched, nothing committed** | ≠0 | regenerates |
 | Commit or push | local only — see below | abort | ≠0 | see below |
-| **Notion projection** | canonical data already committed | abort, **no rollback** | ≠0 | **re-projects from Git; does not call Claude** |
-| **Telegram** | learning record already complete | warn only | **0** | not re-sent |
+| **Website build/deploy** | canonical data already committed; runs in a **separate** workflow | that workflow fails; **the daily run is untouched, no rollback** | ≠0 (site workflow only) | **rebuilds from Git; never calls Claude and never touches Stage 1** |
 
 The core invariant: **the history record is the sole definition of "done."** Until
 it is pushed, the day is unfinished and re-running is safe. After it is pushed,
@@ -461,24 +451,24 @@ for the Stage 1 orchestration milestone, to be made when the code forces it.
 
 ## 9. Boundaries
 
-### domain → pipeline → adapter
+### domain → pipeline → projection
 
 - `domain/` never names a platform. Not in code, not in types, not in identifiers.
-- The pipeline modules import their adapters directly — `finalize.ts` will name
-  `notion.ts`, not resolve it. This is **deliberate**: they are the composition
-  root, and eliminating that import with a registry or dependency injection is
-  exactly the premature abstraction §1 forbids.
-- **An adapter may depend on the canonical Lesson model. The canonical Lesson
-  model may never depend on an adapter.**
+- A pipeline module would import any adapter directly rather than resolve it
+  through a registry or dependency injection — that indirection is exactly the
+  premature abstraction §1 forbids. No such adapter exists today.
+- **A projection may depend on the canonical Lesson model. The canonical Lesson
+  model may never depend on a projection.**
 
 ### Platform-specific knowledge is contained
 
-Notion database schema, page IDs, block structure, API tokens, and every
-equivalent for any other adapter live **only inside that adapter file**. They must
-never reach `vocabulary.json`, `history.jsonl`, the canonical lesson content, the
-domain layer, or any core pipeline decision.
+A platform's schema, identifiers, tokens, output format, and every equivalent live
+**only inside the code for that projection**. They must never reach
+`vocabulary.json`, `history.jsonl`, the canonical lesson content, the domain layer,
+or any core pipeline decision. The website's HTML, templates, styling, and routing
+are the website's concern alone — Git holds Markdown, not HTML.
 
-Adapter configuration is read inside its own adapter, never gathered into a
+Projection configuration is read inside that projection, never gathered into a
 shared module that would then know every platform at once.
 
 ### The reverse leak to guard against
@@ -486,65 +476,57 @@ shared module that would then know every platform at once.
 The subtle failure mode is not a platform concept leaking *outward* — it is a
 platform's limitations leaking *inward*.
 
-When the Notion converter meets Markdown it cannot map, the tempting fix is to
-constrain the generator prompt to "Markdown that Notion can render." **That would
-let Notion silently define the canonical content model.**
+When the website's Markdown-to-HTML build meets a structure it cannot render, the
+tempting fix is to constrain the generator prompt to "Markdown the site can
+render." **That would let the website silently define the canonical content
+model.**
 
 The rule: the shape of canonical Markdown is decided by `docs/lesson-spec.md` and
-nothing else. A converter that cannot map a valid structure fails loudly; that is
-a defect in the converter, not in the content.
+nothing else. A build that cannot render a valid structure fails loudly; that is a
+defect in the build, not in the content.
 
 ### Adding a future consumer
 
-A static site generator, search index, or mobile app content consumer is added as
-a new file under `integrations/` that reads `lessons/**/*.md` through
-`parseLesson`. No change to canonical data, the domain layer, or the
-existing adapters. Nothing is built in advance to enable this.
+A search index, a notification channel, or another content consumer is added as
+its own projection that reads `lessons/**/*.md` through `parseLesson`. No change to
+canonical data, the domain layer, or any existing projection. Nothing is built in
+advance to enable this.
 
-## 10. Adapter contracts
+## 10. The website projection
 
-Each adapter is a module of plain functions. There is no shared interface, no base
-class, and no registry.
+The website is the first projection, and the next milestone. This section fixes its
+**shape and boundaries**; it does not choose a framework, a URL scheme, a visual
+design, or a component layout — those are decided when the milestone is built
+(`docs/implementation-plan.md`), not here.
 
-Lesson generation has no adapter here — it is a GitHub Action, not a client
-this application owns (§5).
+**What it is:**
 
-### `integrations/notion.ts`
+- A **read-only static projection** of the canonical lessons. It reads
+  `lessons/**/*.md` — through `parseLesson` — at **build time** and emits static
+  HTML. It never writes back to Git and holds no state of its own.
+- Hosted on **GitHub Pages**.
+- Built and deployed by a **separate workflow**, triggered by commits to canonical
+  content. It is not a step of the daily pipeline, and the daily pipeline does not
+  wait on it, invoke it, or observe its result. A failed or slow site build never
+  affects Stage 1 completion (§6, §8).
+- **Mobile-first**, and installable to the iPhone home screen: a web app manifest,
+  icons, and `display: standalone`. That is the whole of the installability story
+  for version 1.
 
-```ts
-publishToNotion(lesson: Lesson, config: NotionConfig): Promise<{ url: string }>
-```
+**Version 1 contains** exactly a lesson archive, a single-lesson page, and a
+homepage entry point. Nothing more.
 
-The returned URL exists in memory only and is never persisted.
+**Version 1 does not contain** a Service Worker, search, or notification.
 
-**Notion database schema — an external precondition, created by hand:**
+**The only sanctioned future candidates** — none scheduled, none built ahead of
+their own milestone — are client-side search, Firebase Cloud Messaging
+notification, and the minimal Service Worker that notification would require. No
+login, user account, progress sync, or application backend is planned at all.
 
-| Property | Notion type | Role |
-|---|---|---|
-| `word` | Title | page title and reading entry point |
-| `id` | Rich text | **upsert key** |
-| `date` | Date | learning date; sorting and retrieval |
-| `pos` | Select | category browsing |
-
-**Upsert:** query the database where `id` equals the lesson's `id`.
-
-- 0 results → create the page.
-- 1 result → update its properties and replace its children.
-- 2 or more → **abort.** The projection has been corrupted externally; do not
-  guess which one is right.
-
-**Markdown → Notion blocks** is converted by a purpose-built converter that
-targets the fixed lesson structure. No general-purpose Markdown parsing framework
-is introduced. The converter may know the Lesson schema; the Lesson schema must
-not know the converter (see §9).
-
-### `integrations/telegram.ts`
-
-```ts
-notify(input: { word: string, date: string, link?: string }, config): Promise<void>
-```
-
-`link` is a neutral URL. The notifier does not know which platform produced it.
+The Markdown-to-HTML build targets the fixed lesson structure of
+`docs/lesson-spec.md`. It may know the Lesson schema; the Lesson schema must not
+know it (§9). No general-purpose projection framework, repository abstraction, or
+plugin system is introduced for it (§1).
 
 ## 11. Timezone
 
@@ -583,8 +565,13 @@ Deferred with **no mechanism reserved for them**:
 
 spaced review and scheduling, prompt versioning, a lesson regeneration command, a
 projection reconcile/backfill command, structured JSON lesson output, retry with
-backoff, more than one word per day, reverse sync from any projection, a separate
-notify command, and any UI.
+backoff, more than one word per day, and reverse sync from any projection.
+
+On the website specifically, deferred the same way: a Service Worker, search, and
+notification. The only sanctioned future website candidates are client-side search,
+Firebase Cloud Messaging notification, and the minimal Service Worker that
+notification requires (§10). Login, user accounts, progress sync, and any
+application backend are not planned at all.
 
 Each is a separate, explicit future feature. None is designed for now.
 
@@ -596,6 +583,12 @@ that have been made.
 
 ## Changelog
 
+- **v2** — Redirected the reading/delivery layer: the daily pipeline is Stage 1
+  only; the first projection is a read-only static website built and deployed by a
+  separate workflow (§5, §10), and its failure cannot gate completion. Notion and
+  Telegram were dropped. Notification (Firebase Cloud Messaging) and search are
+  deferred future candidates. The canonical data model, durable-write semantics,
+  and boundary rules are unchanged.
 - **v1** — Initial architecture: three-stage pipeline, canonical-first durable
   write with a single commit, per-stage idempotency, layer and adapter boundaries,
   the canonical Lesson content model, and the anti-premature-abstraction policy.
