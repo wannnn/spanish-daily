@@ -207,19 +207,43 @@ It is not architecture and not a contract. It never decides how the system works
 
 ## Current milestone
 
-**Post-generation projections** — not started.
+**Static lesson web application** — not started.
 
-Stage 1 is complete and running. Everything after it is a projection of
-canonical data that already exists in Git, and none of it may gate whether a day
-counts as learned (`docs/architecture.md` §1, §5).
+Stage 1 is complete and running. The website is the first projection of the
+canonical data already in Git, and it may not gate whether a day counts as learned
+(`docs/architecture.md` §1, §5, §6). Its shape and boundaries are fixed in
+`docs/architecture.md` §10; this entry records the milestone scope only.
 
-This entry is a handoff marker, not a design. The scope, the order of the two
-adapters, and every open question about them are decided when the milestone
-starts.
+**In scope for version 1:**
+
+- A read-only static site that reads `lessons/**/*.md` (via `parseLesson`) at build
+  time and emits static HTML. Git stays the single source of truth —
+  `vocabulary.json`, `history.jsonl`, and `lessons/**/*.md`.
+- Hosted on GitHub Pages, built and deployed by a **separate** workflow triggered by
+  commits — never inside the daily lesson workflow. A failed site build must not
+  affect lesson durable completion.
+- Mobile-first; installable to the iPhone home screen (manifest, icons,
+  `display: standalone`).
+- Exactly three things to read: a lesson archive, a single-lesson page, and a
+  homepage entry point.
+
+**Out of scope for version 1:** a Service Worker, search, and notification.
+
+**Only sanctioned future candidates** (none scheduled, none built ahead):
+client-side search, Firebase Cloud Messaging notification, and the minimal Service
+Worker notification requires. No login, user account, progress sync, or application
+backend is planned.
+
+**Not decided here, and not to be assumed:** UI layout, visual design, URL
+structure, framework choice, component architecture, and any Firebase detail. Do
+not build a generic projection framework, a repository abstraction, a plugin
+system, or scaffolding for the deferred candidates.
 
 ## Remaining milestones
 
-- [ ] Post-generation projections — Notion, then Telegram
+- [ ] Static lesson web application — read-only projection on GitHub Pages
+- [ ] Notification (Firebase Cloud Messaging) — deferred future candidate, not
+  scheduled
 
 ## Open questions
 
@@ -228,7 +252,9 @@ Undecided, and each will block the milestone it belongs to.
 | Question | Blocks |
 |---|---|
 | How a partially completed run is *resumed*, if ever — the policy is now "fail loudly and leave it to a person"; an automatic path would need its own design | A future recovery milestone |
-| The Notion database Title property, and Markdown → Notion block conversion | Notion projection |
+| Framework choice, URL structure, component architecture, and visual design for the site | Static lesson web application |
+| How the Pages deployment workflow is triggered and scoped so it never entangles with the daily lesson workflow | Static lesson web application |
+| Firebase Cloud Messaging setup and the minimal Service Worker it needs | Notification (future) |
 
 ## Verification baseline
 
