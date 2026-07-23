@@ -306,7 +306,7 @@ backend is planned.
 ## Current milestone
 
 **Vocabulary curriculum expansion** — in progress. `vocabulary.json` currently holds
-**250 entries** (`w0001`–`w0250`, orders 1–250).
+**500 entries** (`w0001`–`w0500`, orders 1–500).
 
 Progress:
 
@@ -316,12 +316,16 @@ Progress:
   (199 candidates unchanged + `vale`→`que` replacement and five metadata corrections)
   appended; `id N` ↔ `order N`; `w0001`–`w0050` unchanged. Audit trail in
   `docs/vocabulary-expansion-0051-0250.md`.
-- [ ] **Batch 251–500** — the next batch, same method.
+- [x] **Batch 251–500 (`w0251`–`w0500`)** — complete. 250 human-approved items
+  (249 candidates unchanged + `marido`→`profesor` replacement and the `azúcar`
+  metadata correction) appended; `id N` ↔ `order N`; `w0001`–`w0250` unchanged. Audit
+  trail in `docs/vocabulary-expansion-0251-0500.md`.
+- [ ] **Batch 501–750** — the next batch, same method.
 
 The per-batch review worktables (`docs/vocabulary-pilot-candidates.md`,
-`docs/vocabulary-expansion-0051-0250.md`, and the batches to come) are kept as-is
-during the build; they are consolidated/cleaned up once the full ~1000-word
-curriculum is complete, not before.
+`docs/vocabulary-expansion-0051-0250.md`, `docs/vocabulary-expansion-0251-0500.md`,
+and the batches to come) are kept as-is during the build; they are
+consolidated/cleaned up once the full ~1000-word curriculum is complete, not before.
 
 Contract and canonical-form rules are owned by `docs/vocabulary-spec.md`; this entry
 records only the milestone's scope and working method.
@@ -357,7 +361,7 @@ Source strategy (recorded for the build):
   and must not be imported as raw, uncleaned word forms.
 - **DRAE** — canonical lemma adjudication.
 
-**Next step:** propose the **251–500** batch for human review, then do the mechanical
+**Next step:** propose the **501–750** batch for human review, then do the mechanical
 conversion once approved. AI does not generate or write words without human approval.
 
 **Explicitly out of scope for the expansion:** changing the vocabulary schema, the
@@ -368,7 +372,7 @@ lessons.
 ## Remaining milestones
 
 - [ ] Vocabulary curriculum — continue the staged expansion toward ~1000 lexical
-  items (next batch: **251–500**), in human-decided order
+  items (next batch: **501–750**), in human-decided order
 - [ ] Notification (Firebase Cloud Messaging) — deferred future candidate, not
   scheduled
 
@@ -379,7 +383,7 @@ Undecided, and each will block the milestone it belongs to.
 | Question | Blocks |
 |---|---|
 | How a partially completed run is *resumed*, if ever — the policy is now "fail loudly and leave it to a person"; an automatic path would need its own design | A future recovery milestone |
-| Each vocabulary batch's candidate list must be human-reviewed and approved before AI writes it to `vocabulary.json` | Vocabulary curriculum expansion (next: 251–500) |
+| Each vocabulary batch's candidate list must be human-reviewed and approved before AI writes it to `vocabulary.json` | Vocabulary curriculum expansion (next: 501–750) |
 | Firebase Cloud Messaging setup and the minimal Service Worker it needs | Notification (future) |
 
 ## Verification baseline
