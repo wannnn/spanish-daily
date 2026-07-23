@@ -1,14 +1,15 @@
 ---
-// Minimal mobile-first shell. Not the final visual design — deferred to a later
-// slice. It exists to carry the manifest, viewport, and a readable column so the
-// lesson content and the base-path/install wiring can be verified.
+// Mobile-first shell and the site's global styling, following docs/web-design.md:
+// single-column reading, a limited desktop width, warm earth-tone tokens, accent
+// colours only on section headings, links, and table headers. Styles are global
+// so they also reach the lesson body injected via `set:html`.
 interface Props {
   title: string;
 }
 const { title } = Astro.props;
 
-// The single source for the Pages base is Astro's `base`; read it here rather
-// than hardcoding the repository name. `BASE_URL` is `/spanish-daily/`.
+// The single source for the Pages base is Astro's `base`; never hardcode the repo
+// name. `BASE_URL` is `/spanish-daily/`.
 const base = import.meta.env.BASE_URL;
 ---
 
@@ -20,56 +21,166 @@ const base = import.meta.env.BASE_URL;
     <title>{title} — Spanish Daily</title>
     <link rel="manifest" href={`${base}manifest.webmanifest`} />
     <link rel="icon" href={`${base}icon.svg`} type="image/svg+xml" />
-    <meta name="theme-color" content="#1f2933" />
-    <style>
+    <meta name="theme-color" content="#f7f3ea" />
+    <style is:global>
       :root {
-        color-scheme: light dark;
-        --fg: #1f2933;
-        --muted: #6b7280;
-        --line: #d1d5db;
+        color-scheme: light;
+        --background: #f7f3ea;
+        --surface: #fffdf8;
+        --text: #342f29;
+        --muted: #756d62;
+        --primary: #4f6650;
+        --accent: #a66f4f;
+        --border: #ded5c7;
+        --table-header: #e4eadf;
       }
+
       * {
         box-sizing: border-box;
       }
+
       body {
         margin: 0;
-        font-family: system-ui, -apple-system, "Noto Sans TC", sans-serif;
+        background: var(--background);
+        color: var(--text);
+        font-family: system-ui, -apple-system, "Noto Sans TC", "PingFang TC", sans-serif;
         line-height: 1.7;
-        color: var(--fg);
       }
+
       main {
-        max-width: 42rem;
+        max-width: 44rem;
         margin: 0 auto;
         padding: 1.25rem 1rem 4rem;
       }
-      h1 {
-        line-height: 1.25;
+
+      a {
+        color: var(--accent);
       }
-      table {
+
+      /* Site header — identical across homepage pages. */
+      .site-title {
+        margin: 0.25rem 0 0.25rem;
+        font-size: 1.9rem;
+        line-height: 1.2;
+        color: var(--text);
+      }
+      .site-subtitle {
+        margin: 0 0 1.5rem;
+        color: var(--muted);
+      }
+
+      /* Homepage lesson list — low decoration, one link per row. */
+      .lessons {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+      }
+      .lessons li {
+        border-top: 1px solid var(--border);
+      }
+      .lessons li:last-child {
+        border-bottom: 1px solid var(--border);
+      }
+      .lessons a {
+        display: grid;
+        grid-template-columns: auto 1fr;
+        gap: 0.15rem 0.75rem;
+        align-items: baseline;
+        padding: 0.85rem 0.25rem;
+        text-decoration: none;
+        color: var(--text);
+      }
+      .lessons a:hover .lesson-word {
+        text-decoration: underline;
+      }
+      .lesson-n {
+        color: var(--muted);
+        font-size: 0.85rem;
+        font-variant-numeric: tabular-nums;
+      }
+      .lesson-word {
+        color: var(--primary);
+        font-weight: 600;
+        font-size: 1.15rem;
+      }
+      .lesson-sub {
+        grid-column: 2;
+        color: var(--muted);
+        font-size: 0.9rem;
+      }
+
+      /* Pagination — static links, no client state. */
+      .pagination,
+      .lesson-nav {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 0.75rem;
+        margin-top: 2rem;
+        padding-top: 1rem;
+        border-top: 1px solid var(--border);
+      }
+      .pagination .page-info {
+        color: var(--muted);
+        font-size: 0.9rem;
+        font-variant-numeric: tabular-nums;
+      }
+      .disabled {
+        color: var(--border);
+      }
+
+      /* Lesson page. */
+      .backlink {
+        margin: 0 0 1rem;
+        font-size: 0.95rem;
+      }
+      .lesson-head {
+        margin: 0 0 1.5rem;
+      }
+      .lesson-title {
+        margin: 0 0 0.25rem;
+        font-size: 2rem;
+      }
+      .lesson-meta {
+        margin: 0;
+        color: var(--muted);
+      }
+      .lesson-body h2 {
+        margin-top: 2rem;
+        padding-bottom: 0.3rem;
+        border-bottom: 1px solid var(--border);
+        color: var(--primary);
+        font-size: 1.3rem;
+      }
+
+      /* Tables — full content width, low-chroma header, scroll when too wide. */
+      .table-scroll {
+        overflow-x: auto;
+        margin: 0.85rem 0;
+      }
+      .table-scroll table {
         width: 100%;
         border-collapse: collapse;
-        margin: 0.75rem 0;
-        display: block;
-        overflow-x: auto;
       }
-      th,
-      td {
-        border: 1px solid var(--line);
-        padding: 0.35rem 0.6rem;
+      .table-scroll th,
+      .table-scroll td {
+        border: 1px solid var(--border);
+        padding: 0.4rem 0.65rem;
         text-align: left;
+        background: var(--surface);
       }
+      .table-scroll th {
+        background: var(--table-header);
+        font-weight: 600;
+        white-space: nowrap;
+      }
+      /* Conjugation value column, slightly emphasised. */
+      .table-scroll td:last-child {
+        font-weight: 500;
+      }
+
       code {
         font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-      }
-      @media (prefers-color-scheme: dark) {
-        :root {
-          --fg: #e5e7eb;
-          --muted: #9ca3af;
-          --line: #374151;
-        }
-        body {
-          background: #111827;
-        }
       }
     </style>
   </head>

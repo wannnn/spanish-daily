@@ -1,0 +1,36 @@
+---
+// One homepage page: the fixed title and subtitle, the lesson list for this page,
+// and the pagination footer. The title/subtitle stay identical across pages; only
+// the list changes (docs/web-design.md → Homepage).
+import Pagination from './Pagination.astro';
+import type { LessonView } from '../lib/lessons';
+
+interface Props {
+  entries: readonly LessonView[];
+  current: number;
+  total: number;
+}
+const { entries, current, total } = Astro.props;
+const base = import.meta.env.BASE_URL;
+---
+
+<header>
+  <h1 class="site-title">Spanish Daily</h1>
+  <p class="site-subtitle">每天一個西班牙文單字，慢慢累積。</p>
+</header>
+
+<ul class="lessons">
+  {
+    entries.map((entry) => (
+      <li>
+        <a href={`${base}lessons/${entry.slug}/`}>
+          <span class="lesson-n">Lesson {entry.number}</span>
+          <span class="lesson-word">{entry.word}</span>
+          <span class="lesson-sub">{entry.date} · {entry.pos}</span>
+        </a>
+      </li>
+    ))
+  }
+</ul>
+
+<Pagination current={current} total={total} />

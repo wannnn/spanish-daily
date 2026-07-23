@@ -1,0 +1,31 @@
+---
+// Homepage pages 2..N at `/page/N/`. Page 1 lives at `/` (index.astro), so this
+// route starts at 2. With fewer than PAGE_SIZE + 1 lessons, getStaticPaths returns
+// nothing and no `/page/*` route is generated.
+import Base from '../../layouts/Base.astro';
+import Archive from '../../components/Archive.astro';
+import { loadArchive, pageCount, PAGE_SIZE } from '../../lib/lessons';
+
+export async function getStaticPaths() {
+  const { newestFirst } = await loadArchive();
+  const total = pageCount(newestFirst.length);
+
+  return Array.from({ length: Math.max(0, total - 1) }, (_, index) => {
+    const page = index + 2;
+    return {
+      params: { page: String(page) },
+      props: {
+        entries: newestFirst.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE),
+        current: page,
+        total,
+      },
+    };
+  });
+}
+
+const { entries, current, total } = Astro.props;
+---
+
+<Base title={`所有課程 · 第 ${current} 頁`}>
+  <Archive entries={entries} current={current} total={total} />
+</Base>

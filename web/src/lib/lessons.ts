@@ -1,17 +1,13 @@
 /**
- * Build-time lesson loader.
+ * Build-time lesson archive loader.
  *
  * The website is a read-only projection (docs/architecture.md §10). It reads the
- * canonical lessons straight from the repository at build time and parses them
- * with the ONE canonical parser — the compiled `parseLesson` from the Node
- * pipeline. It never reimplements the frontmatter format and never copies the
- * parser (the whole point of `parseLesson` being the single portability asset,
- * docs/architecture.md §4).
+ * canonical data straight from Git at build time and parses it with the ONE
+ * canonical parser for each file: the compiled `parseLesson` and `parseHistory`
+ * from the Node pipeline. It never reimplements either format (the whole point of
+ * those parsers being the single portability asset, docs/architecture.md §4).
  *
- * Consuming the *compiled* `dist/src/domain/lesson.js` is deliberate: the Pages
- * workflow runs the root `tsc` build first, so this import resolves to real
- * emitted `.js` files (its own NodeNext `.js` specifiers resolve cleanly), with
- * no resolver alias and no shared package.
+ * `Lesson N` and the ordering rules are owned by docs/web-design.md.
  */
 import { readdir, readFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
@@ -19,33 +15,129 @@ import { join, resolve } from 'node:path';
 import { marked } from 'marked';
 
 import { parseLesson } from '../../../dist/src/domain/lesson.js';
-import type { Lesson, LessonMetadata } from '../../../dist/src/domain/types.js';
+import { parseHistory } from '../../../dist/src/domain/history.js';
+import type { Lesson, LessonMetadata, HistoryRecord } from '../../../dist/src/domain/types.js';
 
 // npm runs this package's scripts with the cwd set to `web/`, so the repository
-// root — where `lessons/` lives — is one level up. This avoids depending on the
-// bundled value of `import.meta.url`.
+// root — where `lessons/` and `history.jsonl` live — is one level up.
 const REPO_ROOT = resolve(process.cwd(), '..');
 const LESSONS_DIR = join(REPO_ROOT, 'lessons');
+const HISTORY_FILE = join(REPO_ROOT, 'history.jsonl');
 
-// GFM is what the conjugation tables rely on (pipe tables). The lesson content
-// is generated and human-reviewed canonical data, so it is trusted; no HTML
+/** Homepage page size — the single source (docs/web-design.md). */
+export const PAGE_SIZE = 20;
+
+// GFM is what the conjugation tables rely on (pipe tables). The lesson content is
+// generated and human-reviewed canonical data, so it is trusted; no HTML
 // sanitizer is introduced here.
 marked.setOptions({ gfm: true });
 
-export interface LessonEntry {
+export interface LessonView {
+  /** 1-based position in `history.jsonl` completion order (docs/web-design.md). */
+  readonly number: number;
   /** `YYYY-MM-DD-id`, matching the canonical filename stem and the route. */
   readonly slug: string;
-  readonly metadata: LessonMetadata;
+  readonly id: string;
+  readonly word: string;
+  readonly date: string;
+  readonly pos: string;
   /** The lesson body (lesson-spec §2 sections) rendered to HTML. */
   readonly bodyHtml: string;
 }
 
+export interface Archive {
+  /** Ascending `Lesson N` (history completion order) — used for prev/next. */
+  readonly byCompletion: readonly LessonView[];
+  /** Homepage order: metadata `date` newest-first, `id` as stable tie-breaker. */
+  readonly newestFirst: readonly LessonView[];
+}
+
+/** Total number of static homepage pages for a given lesson count. */
+export function pageCount(total: number): number {
+  return Math.max(1, Math.ceil(total / PAGE_SIZE));
+}
+
+interface ParsedLesson {
+  readonly metadata: LessonMetadata;
+  readonly bodyHtml: string;
+}
+
 /**
- * Read every `lessons/**\/*.md`, parse it with the canonical parser, and render
- * its body to HTML. Throws if none are found, so a broken loader fails the build
- * rather than producing an empty site.
+ * Load, validate, number, and order every canonical lesson.
+ *
+ * Enforces a strict 1:1 correspondence between the lesson files and
+ * `history.jsonl` (docs/web-design.md): equal counts, each history record matched
+ * to exactly one lesson on `id`, `word`, and `date`, and no lesson left over.
+ * Any missing, duplicated, or inconsistent record aborts the build — there is no
+ * unnumbered lesson and no fallback numbering.
  */
-export async function loadLessons(): Promise<LessonEntry[]> {
+export async function loadArchive(): Promise<Archive> {
+  const records = parseHistory(await readFile(HISTORY_FILE, 'utf8'));
+  const lessonsById = await readLessonsById();
+
+  if (records.length !== lessonsById.size) {
+    throw new Error(
+      `lesson/history mismatch: ${lessonsById.size} lesson file(s) but ` +
+        `${records.length} history record(s). They must be 1:1 (docs/web-design.md).`,
+    );
+  }
+
+  const byCompletion: LessonView[] = records.map((record, index) =>
+    matchRecord(record, index + 1, lessonsById),
+  );
+
+  // Equal counts + every record matched a distinct existing id (no duplicate ids
+  // in history, guaranteed by parseHistory) ⇒ bijection. This guard names the
+  // orphan explicitly rather than relying on the counting argument alone.
+  if (byCompletion.length !== lessonsById.size) {
+    const matched = new Set(byCompletion.map((view) => view.id));
+    const orphan = [...lessonsById.keys()].find((id) => !matched.has(id));
+    throw new Error(
+      `lesson ${JSON.stringify(orphan)} has no matching history record ` +
+        `(docs/web-design.md requires 1:1).`,
+    );
+  }
+
+  const newestFirst = [...byCompletion].sort(compareNewestFirst);
+
+  return { byCompletion, newestFirst };
+}
+
+/** Match one history record to its lesson, checking id, word, and date agree. */
+function matchRecord(
+  record: HistoryRecord,
+  number: number,
+  lessonsById: ReadonlyMap<string, ParsedLesson>,
+): LessonView {
+  const lesson = lessonsById.get(record.id);
+  if (lesson === undefined) {
+    throw new Error(
+      `history record ${JSON.stringify(record.id)} (${record.date}) has no lesson file.`,
+    );
+  }
+
+  const { metadata } = lesson;
+  if (metadata.word !== record.word || metadata.date !== record.date) {
+    throw new Error(
+      `lesson/history inconsistency for ${JSON.stringify(record.id)}: history has ` +
+        `word=${JSON.stringify(record.word)} date=${record.date}, lesson has ` +
+        `word=${JSON.stringify(metadata.word)} date=${metadata.date}.`,
+    );
+  }
+
+  return {
+    number,
+    slug: `${metadata.date}-${metadata.id}`,
+    id: metadata.id,
+    word: metadata.word,
+    date: metadata.date,
+    pos: metadata.pos,
+    bodyHtml: lesson.bodyHtml,
+  };
+}
+
+/** Read and parse every `lessons/**\/*.md`, keyed by id (duplicates rejected). */
+async function readLessonsById(): Promise<ReadonlyMap<string, ParsedLesson>> {
   const dirents = await readdir(LESSONS_DIR, { recursive: true, withFileTypes: true });
   const files = dirents
     .filter((dirent) => dirent.isFile() && dirent.name.endsWith('.md'))
@@ -56,14 +148,33 @@ export async function loadLessons(): Promise<LessonEntry[]> {
     throw new Error(`no canonical lessons found under ${LESSONS_DIR}`);
   }
 
-  const entries: LessonEntry[] = [];
+  const lessonsById = new Map<string, ParsedLesson>();
   for (const file of files) {
-    const document = await readFile(file, 'utf8');
-    const lesson: Lesson = parseLesson(document);
-    const slug = `${lesson.metadata.date}-${lesson.metadata.id}`;
-    const bodyHtml = marked.parse(lesson.body) as string;
-    entries.push({ slug, metadata: lesson.metadata, bodyHtml });
+    const lesson: Lesson = parseLesson(await readFile(file, 'utf8'));
+    if (lessonsById.has(lesson.metadata.id)) {
+      throw new Error(
+        `duplicate lesson id ${JSON.stringify(lesson.metadata.id)} across lesson files.`,
+      );
+    }
+    lessonsById.set(lesson.metadata.id, { metadata: lesson.metadata, bodyHtml: renderBody(lesson.body) });
   }
 
-  return entries;
+  return lessonsById;
+}
+
+/**
+ * Render a lesson body to HTML, wrapping every table so a wide table can scroll
+ * horizontally on a narrow screen while still filling the content width
+ * (docs/web-design.md → Tables). marked emits bare `<table>` tags, so a simple
+ * paired wrap is enough and does not need a full HTML parser.
+ */
+function renderBody(body: string): string {
+  return (marked.parse(body) as string)
+    .replace(/<table>/g, '<div class="table-scroll"><table>')
+    .replace(/<\/table>/g, '</table></div>');
+}
+
+function compareNewestFirst(a: LessonView, b: LessonView): number {
+  if (a.date !== b.date) return a.date < b.date ? 1 : -1; // newest first
+  return a.id < b.id ? -1 : a.id > b.id ? 1 : 0; // stable tie-breaker
 }

@@ -1,28 +1,52 @@
 ---
 // The single-lesson page. One static route per canonical lesson at
-// `/lessons/YYYY-MM-DD-id/`, matching the canonical filename stem.
+// `/lessons/YYYY-MM-DD-id/`. Back-to-home at the top; previous / next lesson at the
+// bottom, ordered by completion order (history position) — docs/web-design.md.
 import Base from '../../layouts/Base.astro';
-import { loadLessons } from '../../lib/lessons';
+import { loadArchive } from '../../lib/lessons';
 
 export async function getStaticPaths() {
-  const lessons = await loadLessons();
-  return lessons.map((lesson) => ({
+  const { byCompletion } = await loadArchive();
+  return byCompletion.map((lesson, index) => ({
     params: { slug: lesson.slug },
-    props: { lesson },
+    props: {
+      lesson,
+      prev: index > 0 ? byCompletion[index - 1] : null,
+      next: index < byCompletion.length - 1 ? byCompletion[index + 1] : null,
+    },
   }));
 }
 
-const { lesson } = Astro.props;
-const { metadata, bodyHtml } = lesson;
+const { lesson, prev, next } = Astro.props;
+const base = import.meta.env.BASE_URL;
 ---
 
-<Base title={metadata.word}>
+<Base title={lesson.word}>
+  <p class="backlink"><a href={base}>← 所有課程</a></p>
+
   <article>
-    <h1>{metadata.word}</h1>
-    <p style="color: var(--muted); margin-top: -0.5rem;">
-      {metadata.pos} · {metadata.date}
-    </p>
-    <!-- Body is canonical, human-reviewed Markdown rendered to HTML by marked. -->
-    <Fragment set:html={bodyHtml} />
+    <header class="lesson-head">
+      <h1 class="lesson-title">{lesson.word}</h1>
+      <p class="lesson-meta">Lesson {lesson.number} · {lesson.pos} · {lesson.date}</p>
+    </header>
+    <!-- Canonical, human-reviewed Markdown rendered to HTML by marked. -->
+    <div class="lesson-body" set:html={lesson.bodyHtml}></div>
   </article>
+
+  <nav class="lesson-nav" aria-label="課程導航">
+    {
+      prev ? (
+        <a href={`${base}lessons/${prev.slug}/`} rel="prev">← 上一課：{prev.word}</a>
+      ) : (
+        <span class="disabled">← 上一課</span>
+      )
+    }
+    {
+      next ? (
+        <a href={`${base}lessons/${next.slug}/`} rel="next">下一課：{next.word} →</a>
+      ) : (
+        <span class="disabled">下一課 →</span>
+      )
+    }
+  </nav>
 </Base>
