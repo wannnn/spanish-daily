@@ -69,26 +69,29 @@ const base = import.meta.env.BASE_URL;
         color: var(--muted);
       }
 
-      /* Homepage lesson list — low decoration, one link per row. */
+      /* Homepage lesson list — lightweight cards, one clickable card per lesson. */
       .lessons {
         list-style: none;
         margin: 0;
         padding: 0;
-      }
-      .lessons li {
-        border-top: 1px solid var(--border);
-      }
-      .lessons li:last-child {
-        border-bottom: 1px solid var(--border);
+        display: flex;
+        flex-direction: column;
+        gap: 0.6rem;
       }
       .lessons a {
         display: grid;
         grid-template-columns: auto 1fr;
         gap: 0.15rem 0.75rem;
         align-items: baseline;
-        padding: 0.85rem 0.25rem;
+        padding: 0.85rem 1rem;
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 0.5rem;
         text-decoration: none;
         color: var(--text);
+      }
+      .lessons a:hover {
+        border-color: var(--primary);
       }
       .lessons a:hover .lesson-word {
         text-decoration: underline;
@@ -109,13 +112,20 @@ const base = import.meta.env.BASE_URL;
         font-size: 0.9rem;
       }
 
-      /* Pagination — static links, no client state. */
+      /* Pagination and lesson-page nav — static links, no client state. */
       .pagination,
       .lesson-nav {
         display: flex;
         justify-content: space-between;
         align-items: center;
         gap: 0.75rem;
+      }
+      /* Homepage pagination: separated by spacing, no divider line. */
+      .pagination {
+        margin-top: 2rem;
+      }
+      /* Lesson-page nav keeps its divider (lesson page unchanged). */
+      .lesson-nav {
         margin-top: 2rem;
         padding-top: 1rem;
         border-top: 1px solid var(--border);
