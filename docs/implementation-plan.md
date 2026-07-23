@@ -205,16 +205,13 @@ It is not architecture and not a contract. It never decides how the system works
     delayed run stays correct, and a dropped one costs only that day, since
     selection just carries the word to the next.
 
-## Current milestone
+## Static lesson web application (v1) — completed
 
-**Static lesson web application** — in progress; the first slice is completed and
-live, the next slice is defined below.
-
-Stage 1 is complete and running. The website is the first projection of the
-canonical data already in Git, and it may not gate whether a day counts as learned
-(`docs/architecture.md` §1, §5, §6). Its shape and boundaries are fixed in
-`docs/architecture.md` §10; this entry records the milestone scope, the settled
-build decisions, the completed first slice, and the next slice.
+Completed and live at https://wannnn.github.io/spanish-daily/. A read-only static
+projection of the canonical data in Git; it gates nothing in Stage 1
+(`docs/architecture.md` §1, §5, §6, §10). Its shape and boundaries are fixed in
+`docs/architecture.md` §10 and its v1 design in `docs/web-design.md`; this entry
+records the delivered scope, the settled build decisions, and the final live state.
 
 **In scope for version 1:**
 
@@ -271,86 +268,89 @@ backend is planned.
 - No generic projection framework, repository abstraction, plugin system, or
   scaffolding for the deferred candidates (`docs/architecture.md` §1).
 
-### First slice — completed
+### Slices delivered (commits)
 
-The smallest vertical that de-risked the two hardest integration points —
-`parseLesson` reuse and base-path / workflow separation. Scaffolded Astro in `web/`,
-a filesystem loader that runs each `lessons/**/*.md` through the compiled
-`dist/src/domain/lesson.js` `parseLesson`, `marked` GFM rendering, one static route
-per lesson at `/lessons/YYYY-MM-DD-id/`, a mobile-first base layout linking a
-minimal manifest with a provisional SVG icon, and a separate Pages workflow.
+- **Static site + single-lesson route + deploy chain** — `d3221d4`. Astro in `web/`,
+  a filesystem loader over `lessons/**/*.md` through the compiled `parseLesson`,
+  `marked` GFM rendering, one `/lessons/YYYY-MM-DD-id/` route per lesson, and a
+  separate `pages.yml` Pages workflow. Also scoped root `tsconfig.json` to
+  `include: ["src"]` so the root build never compiles the site. Verified end to end
+  on the live URL.
+- **Paginated lesson-archive homepage** — `afef484`. Real homepage replacing the
+  stub; `Lesson N` from `history.jsonl` completion order; strict lesson↔history 1:1
+  join (build aborts on any mismatch); newest-first; static pagination.
+- **Card refinement** — `56eaa16`. Lessons presented as lightweight cards.
+- **Final app icons** — `95c99ea`. PNG manifest icons (192, 512) + apple-touch-icon
+  (180, opaque white); the provisional SVG removed; the design source moved to
+  `web/assets/`, out of the deployed `public/`.
+- **Layout refinement** — `3959001`. 10 lessons per page, date right-aligned on one
+  line, warm-ivory cards (`#fbf6ec`) with a subtle shadow.
 
-- **Commit:** `d3221d4` (`feat: add static lesson website`). Also scoped the root
-  `tsconfig.json` to `include: ["src"]` so the root `tsc` build never compiles the
-  site.
-- **Pages workflow run:**
-  [29933929653](https://github.com/wannnn/spanish-daily/actions/runs/29933929653) —
-  succeeded, single `build-deploy` job (root `npm ci` + build → web `npm ci` +
-  build → configure / upload / deploy Pages).
-- **Deployed:** https://wannnn.github.io/spanish-daily/
-- **Chain verified end to end, live:** canonical lessons → compiled `parseLesson` →
-  build-time Markdown → GFM HTML → Astro static routes → GitHub Pages
-  artifact / deployment → readable under the project-page base `/spanish-daily/`.
-- All **4** existing lesson routes were generated and return 200; a non-existent
-  slug returns 404. The `manifest`, the `icon`, and the lesson links carry the base
-  path with no 404. The `hablar` page renders its **8** GFM conjugation tables. The
-  root stub and a single-lesson page both open on the live URL.
+### Final live state (verified on the project page)
 
-**On the provisional root stub:** its `lessons[0]` is only the first slice's sample
-choice for reaching a lesson during verification. It is **not** the final homepage
-behaviour and **not** a `w0001` hardcode; the real homepage replaces it with an
-explicit newest-first ordering in the next slice.
-
-### Next slice — Lesson archive homepage
-
-Replace the provisional root stub with the real homepage. The confirmed v1 design —
-layout, homepage and lesson-page structure, table styling, and the visual tokens —
-is owned by `docs/web-design.md`; this entry records only the build work.
-
-Settled since the design review (the three questions that were open then):
-
-- **Homepage copy** — title `Spanish Daily`, subtitle
-  `每天一個西班牙文單字，慢慢累積。` (recorded in `docs/web-design.md`).
-- **Lesson ↔ history is strict 1:1** — matched on `id`, `word`, and `date`; the
-  build **aborts** on any missing, duplicated, or inconsistent record, with no
-  unnumbered lesson and no fallback numbering (`docs/web-design.md`).
-- **`docs/web-design.md` is authoritative** for the site's information
-  architecture, page content, sorting, pagination, and visual direction — now
-  registered in `CLAUDE.md` and pointed to from `docs/architecture.md` §10.
-
-Implement:
-
-- **History loader for lesson numbering** — read `history.jsonl` at build time,
-  reusing the compiled `dist/src/domain/history.js` `parseHistory` (the same
-  no-second-parser pattern as `parseLesson`). `Lesson N` is the 1-based position in
-  completion order, joined to each lesson file by `id`. It never uses the vocabulary
-  `order` and never changes when the curriculum is reordered.
-- **Newest-first lesson summaries** — each showing `Lesson N`, word, date, and pos,
-  the whole row linking to its `/lessons/YYYY-MM-DD-id/` page. Sorted by metadata
-  `date` newest-first, `id` as the stable tie-breaker. No vocabulary `id` or full
-  slug is shown.
-- **Static pagination, 20 per page** — a single `PAGE_SIZE` constant; `/` is page 1,
-  then `/page/2/`, `/page/3/`, … as static routes. Title and subtitle stay identical
-  across pages; only the list changes. Footer gives previous / page info / next. No
-  client-side pagination state.
-- **Formal homepage** replacing the provisional root stub and its sample
-  `lessons[0]`.
-- **Lesson-page navigation** — a "back to all lessons" link at the top, and previous
-  / next lesson at the bottom, ordered by completion order (the history position),
-  omitted at the ends.
-- **Mobile-first styling** following `docs/web-design.md`: single column, limited
-  desktop width, the warm earth-tone provisional tokens, and GFM tables kept as
-  full-width HTML tables with a low-chroma header and small-screen horizontal
+- The homepage **is** the paginated lesson archive — **10 per page** (`PAGE_SIZE`),
+  newest-first (metadata `date` desc, `id` tie-break); no `/page/*` until there are
+  more than 10 lessons.
+- Each lesson is a lightweight **warm-ivory card** (`#fbf6ec`) with a light border
+  and a **subtle** shadow; `Lesson N` + word on the left, the **date on the right,
+  one line**; the homepage shows no `pos` (the lesson page keeps it).
+- The pagination footer is separated by spacing, with no divider line above it.
+- Lesson page: single-page read; a back-to-home link; previous/next by completion
+  order; GFM conjugation tables render full-width with small-screen horizontal
   scroll.
+- Final **PNG** manifest icons + **apple-touch-icon**; iPhone add-to-home-screen and
+  `standalone` launch verified by hand.
+- `Lesson N` derives from `history.jsonl` completion order; the v1 design is owned by
+  `docs/web-design.md`.
 
-**Not in this slice, and no mechanism reserved:** search, a Service Worker,
-notification, login, a backend, completion state, quizzes, favourites, a
-client-side router, or a design-system framework. No change to the canonical lesson
-schema, and no new abstraction.
+## Current milestone
+
+**Vocabulary curriculum pilot** — not started. The next step is a human-provided or
+human-approved first batch of candidate words; AI does not generate them.
+
+Contract and canonical-form rules are owned by `docs/vocabulary-spec.md`; this entry
+records only the pilot's scope and working method.
+
+Settled principles (not to be re-litigated):
+
+- `vocabulary.json` is always a **human-maintained source of truth**.
+- AI does **not** decide, on its own, what is included, what is removed, or the
+  final ordering.
+- AI only assists mechanically: format conversion, POS mapping, canonical-form
+  (lemma) checks, de-duplication, `id`/`order` assignment, and validation.
+- `pos` continues to use the closed enum already in `docs/vocabulary-spec.md`.
+- Frequency is used only to build the **candidate pool**; it is **not** the
+  curriculum `order`.
+- Curriculum ordering is decided by the human, on teaching value.
+- Store **lemmas** only; no conjugated / inflected word forms are imported.
+- **DRAE** adjudicates the canonical **headword** only — it is not a frequency
+  source.
+- **Pilot first:** assemble about **50** lexical items total, review, and only after
+  that passes expand toward 1000.
+- Preserve the existing `w0001`–`w0010` `id`, `word`, and `pos` unchanged.
+- Do not modify `history.jsonl` or any existing lesson.
+
+Source strategy (recorded for the build):
+
+- **Instituto Cervantes A1–A2 inventories** — reference for teaching scope and
+  ordering.
+- **Davies, *A Frequency Dictionary of Spanish*** — reference for manual frequency
+  review; its full ranking is not redistributed.
+- **hermitdave/FrequencyWords** — open frequency cross-check; requires attribution
+  and must not be imported as raw, uncleaned word forms.
+- **DRAE** — canonical lemma adjudication.
+
+**Next step:** the human provides or approves the first batch of candidate words; AI
+then does the mechanical conversion. Do **not** generate the ~50 words now.
+
+**Explicitly not in the pilot:** changing the vocabulary schema, the POS enum, or
+any validation rule; importing frequency ranks as `order`; adding metadata fields;
+touching `w0001`–`w0010`, `history.jsonl`, or existing lessons.
 
 ## Remaining milestones
 
-- [ ] Static lesson web application — read-only projection on GitHub Pages
+- [ ] Vocabulary curriculum — expand from the pilot toward ~1000 lexical items, in
+  human-decided order, after the pilot review passes
 - [ ] Notification (Firebase Cloud Messaging) — deferred future candidate, not
   scheduled
 
@@ -361,7 +361,7 @@ Undecided, and each will block the milestone it belongs to.
 | Question | Blocks |
 |---|---|
 | How a partially completed run is *resumed*, if ever — the policy is now "fail loudly and leave it to a person"; an automatic path would need its own design | A future recovery milestone |
-| Component layout, styling, and the final (non-provisional) icons and visual design | Static lesson web application (homepage and beyond) |
+| The first batch of candidate lexical items must be provided or approved by the human before AI does any mechanical conversion | Vocabulary curriculum pilot |
 | Firebase Cloud Messaging setup and the minimal Service Worker it needs | Notification (future) |
 
 ## Verification baseline
@@ -369,14 +369,20 @@ Undecided, and each will block the milestone it belongs to.
 State as of the latest completed milestone. Replace it when a milestone closes;
 do not accumulate history here.
 
-- Latest commit: `bbaeed6` on `main`, pushed
+- Latest commit: `3959001` on `main`, pushed
 - `npm run typecheck` — passes
-- `npm run build` — passes
-- `npm test` — 532 tests, 532 pass, 0 fail (75 suites)
+- `npm run build` — passes (root)
+- `npm test` — 532 tests, 532 pass, 0 fail (75 suites); unchanged since the web
+  work touched only `web/` and docs, not `src/`
+- `npm --prefix web ci` — passes; `npm --prefix web run build` — passes (6 pages;
+  build-time artifact assertions pass)
+- GitHub Pages deploy verified live at https://wannnn.github.io/spanish-daily/
 - `npm ci` succeeds despite the version mismatch below, and does not rewrite the
   lockfile — checked in an isolated copy, because the workflow depends on it
 - Working tree expected clean
-- Dependencies: `typescript` and `@types/node` only — no runtime dependency
+- Dependencies: root has `typescript` and `@types/node` only (no runtime
+  dependency); `web/` has `astro` and `marked` as web-local dependencies, none added
+  to the root
 
 Known and deliberately unfixed: `package.json` says version `0.1.0` while
 `package-lock.json` records `1.0.0`. Any npm command will rewrite the lockfile to

@@ -20,24 +20,25 @@ recorded as **provisional tokens** and may be nudged during implementation.
   - title: `Spanish Daily`
   - subtitle: `每天一個西班牙文單字，慢慢累積。`
 - Below that, lists **all** canonical lessons, newest lesson at the top.
-- **20 lessons per page**, defined once as an adjustable constant (`PAGE_SIZE`),
+- **10 lessons per page**, defined once as an adjustable constant (`PAGE_SIZE`),
   not scattered.
 - **Static pagination** — real routes, not client state:
   - `/` is page 1,
   - `/page/2/`,
   - `/page/3/`, …
 - The title and subtitle stay identical across pages; only the lesson list changes.
-- A footer gives **previous page**, **page information**, and **next page**.
+- A footer gives **previous page**, **page information**, and **next page**,
+  separated from the list by spacing rather than a divider line.
 - No client-side pagination state.
 
 ### Each lesson row shows
 
-- `Lesson N`
-- the word
-- the date
-- the part of speech (`pos`)
-- The **whole row is one link** to the existing `/lessons/YYYY-MM-DD-id/` page.
-- It does **not** show the vocabulary `id` or the full slug.
+- Each lesson is a **lightweight card**, and the **whole card is one link** to the
+  existing `/lessons/YYYY-MM-DD-id/` page.
+- On a single line: `Lesson N` and the word to the left, the **date aligned to the
+  right**.
+- It does **not** show the part of speech (`pos`), the vocabulary `id`, or the full
+  slug. `pos` appears on the lesson page, not on the homepage.
 
 ### What `Lesson N` means
 
@@ -92,7 +93,9 @@ recorded as **provisional tokens** and may be nudged during implementation.
 - Warm earth tones with a natural feel: off-white background, dark brown-grey body
   text, forest-green as the primary colour, terracotta only as a small accent, a
   light-sand surface / table background.
-- Light borders, low shadow, low decoration.
+- Light borders, low decoration.
+- Lessons are shown as **lightweight cards**: a warm-ivory card surface, a light
+  border, a small radius, and a **subtle** (never heavy) shadow.
 - The accent colours appear **only** on section headings, links, and table headers.
 - No gradients, no heavy cards, no dashboard look.
 
@@ -104,6 +107,7 @@ Recorded now, adjustable at implementation time:
 |---|---|
 | `background` | `#f7f3ea` |
 | `surface` | `#fffdf8` |
+| `card` | `#fbf6ec` |
 | `text` | `#342f29` |
 | `muted` | `#756d62` |
 | `primary` | `#4f6650` |
