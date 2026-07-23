@@ -17,6 +17,7 @@ Every design decision has exactly one owning document. Read the owner before cha
 | `docs/vocabulary-spec.md` | Vocabulary data contract: entry schema, identity, `order`, POS enum, validation rules, loader behaviour. |
 | `docs/lesson-spec.md` | Lesson content and generation contract: input contract, Markdown structure, example-sentence rules, prompt architecture. |
 | `docs/architecture.md` | Application architecture: layers, pipeline stages, completion semantics, idempotency, failure and retry behaviour, adapter boundaries. |
+| `docs/web-design.md` | Website v1 design: information architecture, page content, sorting, pagination, and visual direction. Not canonical content, the pipeline, or deployment architecture. |
 | `docs/implementation-plan.md` | What is built so far, the current milestone, open questions, and the handoff state. |
 | `CLAUDE.md` (this file) | Agent context, development principles, rules for changes. |
 

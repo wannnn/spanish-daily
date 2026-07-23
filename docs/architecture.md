@@ -495,9 +495,10 @@ advance to enable this.
 ## 10. The website projection
 
 The website is the first projection, and the next milestone. This section fixes its
-**shape and boundaries**; it does not choose a framework, a URL scheme, a visual
-design, or a component layout — those are decided when the milestone is built
-(`docs/implementation-plan.md`), not here.
+**shape and boundaries** only. The presentation — information architecture, page
+content, sorting, pagination, and visual direction — is owned by
+`docs/web-design.md`; the framework and build wiring are recorded in
+`docs/implementation-plan.md`. Neither is decided here.
 
 **What it is:**
 
@@ -513,8 +514,9 @@ design, or a component layout — those are decided when the milestone is built
   icons, and `display: standalone`. That is the whole of the installability story
   for version 1.
 
-**Version 1 contains** exactly a lesson archive, a single-lesson page, and a
-homepage entry point. Nothing more.
+**Version 1 contains** a homepage that **is** the paginated lesson archive, plus one
+independent single-lesson static page per lesson. Nothing more. How they look and
+read is owned by `docs/web-design.md`.
 
 **Version 1 does not contain** a Service Worker, search, or notification.
 

@@ -303,16 +303,50 @@ explicit newest-first ordering in the next slice.
 
 ### Next slice — Lesson archive homepage
 
-Replace the provisional root stub with the real homepage.
+Replace the provisional root stub with the real homepage. The confirmed v1 design —
+layout, homepage and lesson-page structure, table styling, and the visual tokens —
+is owned by `docs/web-design.md`; this entry records only the build work.
 
-- The homepage lists **all** canonical lessons.
-- Ordered by lesson metadata `date`, **newest first**; ties broken by `id` as a
-  stable tie-breaker.
-- Each entry links to its existing `/lessons/YYYY-MM-DD-id/` page.
-- Mobile-first, consistent with the base layout.
+Settled since the design review (the three questions that were open then):
 
-**Not in this slice:** search, a Service Worker, and notification. No change to the
-canonical lesson schema, and no backend or extra abstraction.
+- **Homepage copy** — title `Spanish Daily`, subtitle
+  `每天一個西班牙文單字，慢慢累積。` (recorded in `docs/web-design.md`).
+- **Lesson ↔ history is strict 1:1** — matched on `id`, `word`, and `date`; the
+  build **aborts** on any missing, duplicated, or inconsistent record, with no
+  unnumbered lesson and no fallback numbering (`docs/web-design.md`).
+- **`docs/web-design.md` is authoritative** for the site's information
+  architecture, page content, sorting, pagination, and visual direction — now
+  registered in `CLAUDE.md` and pointed to from `docs/architecture.md` §10.
+
+Implement:
+
+- **History loader for lesson numbering** — read `history.jsonl` at build time,
+  reusing the compiled `dist/src/domain/history.js` `parseHistory` (the same
+  no-second-parser pattern as `parseLesson`). `Lesson N` is the 1-based position in
+  completion order, joined to each lesson file by `id`. It never uses the vocabulary
+  `order` and never changes when the curriculum is reordered.
+- **Newest-first lesson summaries** — each showing `Lesson N`, word, date, and pos,
+  the whole row linking to its `/lessons/YYYY-MM-DD-id/` page. Sorted by metadata
+  `date` newest-first, `id` as the stable tie-breaker. No vocabulary `id` or full
+  slug is shown.
+- **Static pagination, 20 per page** — a single `PAGE_SIZE` constant; `/` is page 1,
+  then `/page/2/`, `/page/3/`, … as static routes. Title and subtitle stay identical
+  across pages; only the list changes. Footer gives previous / page info / next. No
+  client-side pagination state.
+- **Formal homepage** replacing the provisional root stub and its sample
+  `lessons[0]`.
+- **Lesson-page navigation** — a "back to all lessons" link at the top, and previous
+  / next lesson at the bottom, ordered by completion order (the history position),
+  omitted at the ends.
+- **Mobile-first styling** following `docs/web-design.md`: single column, limited
+  desktop width, the warm earth-tone provisional tokens, and GFM tables kept as
+  full-width HTML tables with a low-chroma header and small-screen horizontal
+  scroll.
+
+**Not in this slice, and no mechanism reserved:** search, a Service Worker,
+notification, login, a backend, completion state, quizzes, favourites, a
+client-side router, or a design-system framework. No change to the canonical lesson
+schema, and no new abstraction.
 
 ## Remaining milestones
 
