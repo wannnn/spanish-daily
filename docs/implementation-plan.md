@@ -305,11 +305,26 @@ backend is planned.
 
 ## Current milestone
 
-**Vocabulary curriculum pilot** — not started. The next step is a human-provided or
-human-approved first batch of candidate words; AI does not generate them.
+**Vocabulary curriculum expansion** — in progress. `vocabulary.json` currently holds
+**250 entries** (`w0001`–`w0250`, orders 1–250).
+
+Progress:
+
+- [x] **Pilot (`w0011`–`w0050`)** — complete. 40 human-approved items appended to the
+  original 10; audit trail in `docs/vocabulary-pilot-candidates.md`.
+- [x] **Batch 51–250 (`w0051`–`w0250`)** — complete. 200 human-approved items
+  (199 candidates unchanged + `vale`→`que` replacement and five metadata corrections)
+  appended; `id N` ↔ `order N`; `w0001`–`w0050` unchanged. Audit trail in
+  `docs/vocabulary-expansion-0051-0250.md`.
+- [ ] **Batch 251–500** — the next batch, same method.
+
+The per-batch review worktables (`docs/vocabulary-pilot-candidates.md`,
+`docs/vocabulary-expansion-0051-0250.md`, and the batches to come) are kept as-is
+during the build; they are consolidated/cleaned up once the full ~1000-word
+curriculum is complete, not before.
 
 Contract and canonical-form rules are owned by `docs/vocabulary-spec.md`; this entry
-records only the pilot's scope and working method.
+records only the milestone's scope and working method.
 
 Settled principles (not to be re-litigated):
 
@@ -325,9 +340,11 @@ Settled principles (not to be re-litigated):
 - Store **lemmas** only; no conjugated / inflected word forms are imported.
 - **DRAE** adjudicates the canonical **headword** only — it is not a frequency
   source.
-- **Pilot first:** assemble about **50** lexical items total, review, and only after
-  that passes expand toward 1000.
-- Preserve the existing `w0001`–`w0010` `id`, `word`, and `pos` unchanged.
+- **Staged batches:** expand toward 1000 in human-reviewed batches (pilot →
+  51–250 → 251–500 → 501–750 → 751–1000); each batch is proposed, reviewed, and
+  only then written.
+- Preserve every already-assigned `id`, `word`, and `pos` unchanged; `id` is never
+  reused.
 - Do not modify `history.jsonl` or any existing lesson.
 
 Source strategy (recorded for the build):
@@ -340,17 +357,18 @@ Source strategy (recorded for the build):
   and must not be imported as raw, uncleaned word forms.
 - **DRAE** — canonical lemma adjudication.
 
-**Next step:** the human provides or approves the first batch of candidate words; AI
-then does the mechanical conversion. Do **not** generate the ~50 words now.
+**Next step:** propose the **251–500** batch for human review, then do the mechanical
+conversion once approved. AI does not generate or write words without human approval.
 
-**Explicitly not in the pilot:** changing the vocabulary schema, the POS enum, or
-any validation rule; importing frequency ranks as `order`; adding metadata fields;
-touching `w0001`–`w0010`, `history.jsonl`, or existing lessons.
+**Explicitly out of scope for the expansion:** changing the vocabulary schema, the
+POS enum, or any validation rule; importing frequency ranks as `order`; adding
+metadata fields; touching any already-assigned entry, `history.jsonl`, or existing
+lessons.
 
 ## Remaining milestones
 
-- [ ] Vocabulary curriculum — expand from the pilot toward ~1000 lexical items, in
-  human-decided order, after the pilot review passes
+- [ ] Vocabulary curriculum — continue the staged expansion toward ~1000 lexical
+  items (next batch: **251–500**), in human-decided order
 - [ ] Notification (Firebase Cloud Messaging) — deferred future candidate, not
   scheduled
 
@@ -361,7 +379,7 @@ Undecided, and each will block the milestone it belongs to.
 | Question | Blocks |
 |---|---|
 | How a partially completed run is *resumed*, if ever — the policy is now "fail loudly and leave it to a person"; an automatic path would need its own design | A future recovery milestone |
-| The first batch of candidate lexical items must be provided or approved by the human before AI does any mechanical conversion | Vocabulary curriculum pilot |
+| Each vocabulary batch's candidate list must be human-reviewed and approved before AI writes it to `vocabulary.json` | Vocabulary curriculum expansion (next: 251–500) |
 | Firebase Cloud Messaging setup and the minimal Service Worker it needs | Notification (future) |
 
 ## Verification baseline
