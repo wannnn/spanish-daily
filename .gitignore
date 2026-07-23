@@ -10,6 +10,19 @@ dist/
 .env.*
 !.env.example
 
+# Credentials / private keys (never commit; public keys such as *.pub are fine)
+*.pem
+*.key
+*.p12
+*.pfx
+id_rsa
+id_rsa.*
+id_ed25519
+id_ed25519.*
+# ...but never ignore the public-key counterparts
+!id_rsa.pub
+!id_ed25519.pub
+
 # Logs
 logs/
 *.log

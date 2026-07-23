@@ -15,16 +15,12 @@ name: Daily lesson
 on:
   workflow_dispatch:
   schedule:
-    # 08:30 Asia/Taipei, daily. The timezone is stated rather than converted to
-    # UTC by hand: this is the product's timezone (docs/architecture.md §11), and
-    # naming it keeps the intent readable. Taiwan observes no daylight saving, so
-    # it needs no seasonal adjustment either way.
-    #
-    # Deliberately not on the hour. GitHub delays scheduled runs under load — and
-    # may drop them outright — and the start of every hour is named as a
-    # high-load time. A dropped run costs a day's lesson; a delayed one does not,
-    # since the date is computed when the run actually starts.
-    - cron: "30 8 * * *"
+    # 06:44 Asia/Taipei, daily — the product's timezone stated directly
+    # (docs/architecture.md §11). Off the hour on purpose: GitHub delays, and may
+    # drop, runs scheduled at high-load times like the top of the hour. A delayed
+    # run stays correct (the date is computed when it actually starts); a dropped
+    # run costs only that day, since selection carries the word to the next.
+    - cron: "44 6 * * *"
       timezone: "Asia/Taipei"
 
 # The lesson and the history record are committed and pushed by the finalize

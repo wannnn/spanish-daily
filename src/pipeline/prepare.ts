@@ -10,7 +10,7 @@
  * no cost.
  *
  * The clock is supplied by the caller. Nothing here reads the current time,
- * and nothing here knows about Claude, GitHub Actions, Notion, or Telegram.
+ * and nothing here knows about Claude, GitHub Actions, or any projection.
  */
 
 import { join } from 'node:path';

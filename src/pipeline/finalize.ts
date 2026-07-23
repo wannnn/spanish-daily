@@ -22,8 +22,7 @@
  * returns.
  *
  * This module does not generate, does not select, and does not project. It runs
- * no scheduler and knows nothing about GitHub Actions, Claude, Notion, or
- * Telegram.
+ * no scheduler and knows nothing about GitHub Actions, Claude, or any projection.
  */
 
 import { readFile } from 'node:fs/promises';

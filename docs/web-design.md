@@ -1,17 +1,17 @@
 # Website Design (v1)
 
-- **Status:** records the **confirmed v1 design** of the static website — its
-  homepage, its lesson page, table styling, and the visual direction. It is **not**
-  a design system, and it does not try to be complete.
+- **Status:** the **v1 design of the static website**, as implemented and live at
+  https://wannnn.github.io/spanish-daily/ — its homepage, its lesson page, table
+  styling, and the visual direction. It is the reference for maintaining and evolving
+  the v1 UI. It is **not** a design system, and it does not try to be complete.
 
 This document owns *what the v1 pages look like and how they read*. It does **not**
 own the website's architectural boundaries — those stay in `docs/architecture.md`
-§10 (read-only projection, separate Pages workflow, failure never gates
-completion). It changes **no** canonical data and **no** lesson contract: the site
-only reads `lessons/**/*.md` and `history.jsonl` and renders them.
+§10. It changes **no** canonical data and **no** lesson contract: the site only reads
+`lessons/**/*.md` and `history.jsonl` and renders them.
 
-Anything not written here is undecided and must not be invented. Colours are
-recorded as **provisional tokens** and may be nudged during implementation.
+Anything not written here is undecided and must not be invented. The colour tokens
+below are the ones the built site uses.
 
 ## Homepage
 
@@ -99,9 +99,9 @@ recorded as **provisional tokens** and may be nudged during implementation.
 - The accent colours appear **only** on section headings, links, and table headers.
 - No gradients, no heavy cards, no dashboard look.
 
-### Provisional colour tokens
+### Colour tokens
 
-Recorded now, adjustable at implementation time:
+The values the built site uses:
 
 | Token | Value |
 |---|---|

@@ -12,14 +12,14 @@ their own contracts:
 | Document | Owns |
 |---|---|
 | `docs/vocabulary-spec.md` | The vocabulary data contract: entry schema, identity, ordering, POS, validation. |
+| `docs/vocabulary-curation.md` | How the vocabulary word list is built and extended: selection method, sources, human-review workflow. |
 | `docs/lesson-spec.md` | The lesson content and generation contract: input contract, Markdown structure, prompt architecture. |
 | **this document** | Application architecture, pipeline stages, state semantics, boundaries. |
-| `docs/implementation-plan.md` | What is built so far, the current milestone, and open questions. |
 | `CLAUDE.md` | Agent context, development principles, rules for changes. |
 
-This document describes the system's **intended shape**, not its current extent.
-Parts of it are not implemented yet, and it does not track that —
-`docs/implementation-plan.md` does.
+The Stage 1 daily pipeline and the static website described here are **implemented
+and running**. This document defines the system's architecture; it does not track
+build progress.
 
 ## 1. Architectural principles
 
@@ -77,10 +77,7 @@ defining an interface for platforms*. The latter only relocates the coupling.
  pure functions   all I/O and external services
 ```
 
-This is the **target** structure: where each responsibility belongs once the
-whole pipeline exists. It is not a description of the repository as it stands —
-several of these modules are not written yet. For what exists today and what is
-next, see `docs/implementation-plan.md`.
+This is the structure as it stands — every module below exists:
 
 ```
 src/
@@ -91,25 +88,27 @@ src/
     history.ts                 JSONL parsing, learned-set derivation
     selection.ts               word selection
     lesson.ts                  canonical Lesson model; owns LESSON_SCHEMA_VERSION
+    lessonTask.ts              prepare-side task + finalize-side acceptance (pure)
 
   io/                          filesystem and Git boundary — thin, no decisions
     vocabularyStore.ts
-    historyStore.ts
-    git.ts                     (planned)
+    historyStore.ts            load + append-only history writes
+    git.ts                     working-tree inspection, staging, commit, push
 
-  integrations/                one file per consumer that reads canonical content;
-                               no members yet — Notion and Telegram were dropped,
-                               and the website is a separate build (§10)
-
-  pipeline/                    (planned)
+  pipeline/                    the composition root: stage order and failure handling
     prepare.ts                 selection → task context
     finalize.ts                acceptance → history → commit + push
 
   cli/
     today.ts                   read-only: print today's selection
-    prepare.ts                 (planned) emit today's task context
-    finalize.ts                (planned) accept the generated lesson and commit
+    prepare.ts                 emit today's task context
+    finalize.ts                accept the generated lesson and commit + push
 ```
+
+There is **no `integrations/` directory**. The website is a separate build that
+lives in `web/` with its own `package.json` (§10); it reads canonical content but is
+not part of `src/`. If a future consumer needs an in-process adapter, it is added
+under `integrations/` following the dependency rule below.
 
 **There is no `integrations/claude.ts`.** Lesson generation does not go through
 an API client this application owns — a Claude Code GitHub Action writes the
@@ -317,8 +316,8 @@ cross-file transaction; the invariant belongs to Stage 1 as a whole.
   finalize does.
 
 The exact action version, model identifier, and tool-restriction syntax are
-deliberately not pinned here. They are verified against the official
-documentation during the GitHub Actions milestone rather than guessed now.
+deliberately not pinned in this document; they live in the daily-lesson workflow,
+verified against the official documentation rather than restated here.
 
 #### What the workflow file may and may not do
 
@@ -441,13 +440,16 @@ What becomes of that local state depends on where the run happened:
   next run therefore starts from a repository that is *not* in the same state as
   a fresh clone.
 
-Stage 1 must therefore either handle an unclean local state or refuse to run
-until it is resolved — and say which, out loud. It must never write canonical
-data on top of a state it has not accounted for.
+Stage 1 **refuses to run on an unclean local state.** It requires a completely
+clean worktree to begin, and the only change generation is allowed to leave is one
+new untracked lesson file at the task's target path; anything else aborts. It never
+writes canonical data on top of a state it has not accounted for.
 
-Which of those two it does is **not decided here**, and no retry, rebase, or
-conflict-resolution behaviour is designed in this document. That is a decision
-for the Stage 1 orchestration milestone, to be made when the code forces it.
+Recovery is deliberately **not automatic.** Nothing resets, reverts, checks out,
+force-pushes, rebases, or retries. A run that fails after the commit leaves a local
+commit that the next run will refuse to work around; diagnosing and resolving a
+partial run is a person's job. An automatic recovery path, if ever wanted, would be
+its own separately designed feature.
 
 ## 9. Boundaries
 
@@ -494,11 +496,11 @@ advance to enable this.
 
 ## 10. The website projection
 
-The website is the first projection, and the next milestone. This section fixes its
-**shape and boundaries** only. The presentation — information architecture, page
-content, sorting, pagination, and visual direction — is owned by
-`docs/web-design.md`; the framework and build wiring are recorded in
-`docs/implementation-plan.md`. Neither is decided here.
+The website is the first projection, and it is **implemented and live**. This
+section fixes its **shape and boundaries** only. The presentation — information
+architecture, page content, sorting, pagination, and visual direction — is owned by
+`docs/web-design.md`. The framework and build wiring live in `web/` (Astro, static
+output, with its own `package.json`) and the `pages.yml` workflow, not here.
 
 **What it is:**
 
@@ -579,9 +581,11 @@ Each is a separate, explicit future feature. None is designed for now.
 
 ## 14. Open decisions
 
-Questions that are still open change as the work proceeds, so they are tracked in
-`docs/implementation-plan.md` rather than here. This document records decisions
-that have been made.
+This document records decisions that have been made. The Stage 1 pipeline and the
+website are built, so no separate open-decision log is maintained; the deliberately
+deferred, unscheduled features are enumerated in §13. A concrete open question is
+recorded next to the mechanism it concerns — for example, whether an automatic
+recovery from a partial run is ever built (§8).
 
 ## Changelog
 

@@ -301,10 +301,10 @@ generation is invoked, and what the acceptance gate checks, belong to
 - Cross-lesson consistency: the same structure every day.
 - Irregularities explained by pattern, not merely listed.
 
-**Deferred implementation details** (decided when the layer is built, not now):
-how generation is invoked and which model runs it. Those are settled in
-`docs/architecture.md` §5 and pinned during the scheduling milestone, not here —
-this document constrains what a lesson must contain, not how it is produced.
+**Implementation details owned elsewhere:** how generation is invoked and which
+model runs it are settled in `docs/architecture.md` §5 and pinned in the daily-lesson
+workflow, not here — this document constrains what a lesson must contain, not how it
+is produced.
 
 What is settled: the generator writes fixed-heading Markdown, and the pipeline
 accepts it through a structural check on the finished document. A structured
