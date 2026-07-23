@@ -15,7 +15,9 @@ function assert(condition, message) {
 
 assert(existsSync(dist), 'dist/ was not produced');
 assert(existsSync(join(dist, 'manifest.webmanifest')), 'dist/manifest.webmanifest is missing');
-assert(existsSync(join(dist, 'icon.svg')), 'dist/icon.svg is missing');
+for (const icon of ['icon-192.png', 'icon-512.png', 'apple-touch-icon.png']) {
+  assert(existsSync(join(dist, icon)), `dist/${icon} is missing`);
+}
 
 const lessonsDir = join(dist, 'lessons');
 assert(existsSync(lessonsDir), 'dist/lessons/ is missing');
