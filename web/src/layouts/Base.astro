@@ -28,6 +28,7 @@ const base = import.meta.env.BASE_URL;
         color-scheme: light;
         --background: #f7f3ea;
         --surface: #fffdf8;
+        --card: #fbf6ec;
         --text: #342f29;
         --muted: #756d62;
         --primary: #4f6650;
@@ -80,19 +81,20 @@ const base = import.meta.env.BASE_URL;
         gap: 0.6rem;
       }
       .lessons a {
-        display: grid;
-        grid-template-columns: auto 1fr;
-        gap: 0.15rem 0.75rem;
+        display: flex;
         align-items: baseline;
+        gap: 0.75rem;
         padding: 0.85rem 1rem;
-        background: var(--surface);
+        background: var(--card);
         border: 1px solid var(--border);
         border-radius: 0.5rem;
+        box-shadow: 0 1px 2px rgba(52, 47, 41, 0.05), 0 2px 6px rgba(52, 47, 41, 0.05);
         text-decoration: none;
         color: var(--text);
       }
       .lessons a:hover {
         border-color: var(--primary);
+        box-shadow: 0 2px 5px rgba(52, 47, 41, 0.08), 0 4px 10px rgba(52, 47, 41, 0.06);
       }
       .lessons a:hover .lesson-word {
         text-decoration: underline;
@@ -108,9 +110,10 @@ const base = import.meta.env.BASE_URL;
         font-size: 1.15rem;
       }
       .lesson-sub {
-        grid-column: 2;
+        margin-left: auto;
         color: var(--muted);
         font-size: 0.9rem;
+        white-space: nowrap;
       }
 
       /* Pagination and lesson-page nav — static links, no client state. */

@@ -25,7 +25,7 @@ const LESSONS_DIR = join(REPO_ROOT, 'lessons');
 const HISTORY_FILE = join(REPO_ROOT, 'history.jsonl');
 
 /** Homepage page size — the single source (docs/web-design.md). */
-export const PAGE_SIZE = 20;
+export const PAGE_SIZE = 10;
 
 // GFM is what the conjugation tables rely on (pipe tables). The lesson content is
 // generated and human-reviewed canonical data, so it is trusted; no HTML
