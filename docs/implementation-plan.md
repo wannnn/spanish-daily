@@ -305,8 +305,9 @@ backend is planned.
 
 ## Current milestone
 
-**Vocabulary curriculum expansion** — in progress. `vocabulary.json` currently holds
-**750 entries** (`w0001`–`w0750`, orders 1–750).
+**Vocabulary curriculum — first 1000-word milestone: complete.** `vocabulary.json`
+holds **1000 entries** (`w0001`–`w1000`, orders 1–1000). The staged, human-reviewed
+expansion from the original 10 words to 1000 is finished.
 
 Progress:
 
@@ -325,13 +326,23 @@ Progress:
   and a stale `bajo` id reference fixed to the real `w0224`); `id N` ↔ `order N`;
   `w0001`–`w0500` unchanged. Audit trail in
   `docs/vocabulary-expansion-0501-0750.md`.
-- [ ] **Batch 751–1000** — the final batch, same method.
+- [x] **Batch 751–1000 (`w0751`–`w1000`)** — complete. 250 human-approved items
+  (`cuyo`/`salvo` replaced by `soler`/`llover` with an insertion reordering);
+  `id N` ↔ `order N`; `w0001`–`w0750` unchanged. Closes the 1000-word milestone.
+  Audit trail (with a 1000-word coverage review) in
+  `docs/vocabulary-expansion-0751-1000.md`.
+
+**Next step:** no new expansion batch is scheduled. The next vocabulary task is
+**housekeeping, not growth** — consolidate the per-batch review worktables into a
+single permanent audit document (see below), done later as its own change. Further
+curriculum growth beyond 1000 (e.g. weekday/month names and the other omissions
+listed in the 751–1000 worktable) is a possible *future* milestone, not the next one.
 
 The per-batch review worktables (`docs/vocabulary-pilot-candidates.md`,
 `docs/vocabulary-expansion-0051-0250.md`, `docs/vocabulary-expansion-0251-0500.md`,
-`docs/vocabulary-expansion-0501-0750.md`, and the final batch) are kept as-is during
-the build; they are consolidated/cleaned up once the full ~1000-word curriculum is
-complete, not before.
+`docs/vocabulary-expansion-0501-0750.md`, `docs/vocabulary-expansion-0751-1000.md`)
+are **kept as-is** now that the milestone is complete; consolidating them into one
+permanent audit document is deferred to a later housekeeping change.
 
 Contract and canonical-form rules are owned by `docs/vocabulary-spec.md`; this entry
 records only the milestone's scope and working method.
@@ -367,9 +378,11 @@ Source strategy (recorded for the build):
   and must not be imported as raw, uncleaned word forms.
 - **DRAE** — canonical lemma adjudication.
 
-**Next step:** propose the final **751–1000** batch for human review, then do the
-mechanical conversion once approved. AI does not generate or write words without human
-approval.
+**Status:** the staged expansion is **complete at 1000 words** (see *Current
+milestone*). No further batch is scheduled; the remaining vocabulary task is to
+consolidate the review worktables into one permanent audit document. Any growth
+beyond 1000 would be a new, separately decided milestone. AI never generates or writes
+words without human approval.
 
 **Explicitly out of scope for the expansion:** changing the vocabulary schema, the
 POS enum, or any validation rule; importing frequency ranks as `order`; adding
@@ -378,8 +391,10 @@ lessons.
 
 ## Remaining milestones
 
-- [ ] Vocabulary curriculum — continue the staged expansion toward ~1000 lexical
-  items (final batch: **751–1000**), in human-decided order
+- [x] Vocabulary curriculum — first **1000-word** milestone complete (`w0001`–`w1000`,
+  orders 1–1000), built in human-reviewed staged batches
+- [ ] Vocabulary worktable consolidation — merge the per-batch review worktables into
+  one permanent audit document (housekeeping; not a content change)
 - [ ] Notification (Firebase Cloud Messaging) — deferred future candidate, not
   scheduled
 
@@ -390,7 +405,7 @@ Undecided, and each will block the milestone it belongs to.
 | Question | Blocks |
 |---|---|
 | How a partially completed run is *resumed*, if ever — the policy is now "fail loudly and leave it to a person"; an automatic path would need its own design | A future recovery milestone |
-| Each vocabulary batch's candidate list must be human-reviewed and approved before AI writes it to `vocabulary.json` | Vocabulary curriculum expansion (final: 751–1000) |
+| Whether to grow the curriculum beyond 1000 words, and with which vocabulary types first (weekday/month names and the other omissions in the 751–1000 worktable are the noted candidates) | A future curriculum-growth milestone (not scheduled) |
 | Firebase Cloud Messaging setup and the minimal Service Worker it needs | Notification (future) |
 
 ## Verification baseline
