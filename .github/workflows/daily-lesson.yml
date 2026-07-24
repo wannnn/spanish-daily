@@ -23,11 +23,14 @@ on:
     - cron: "44 6 * * *"
       timezone: "Asia/Taipei"
 
-# The lesson and the history record are committed and pushed by the finalize
-# CLI, using the checkout's own credentials. Nothing here reads issues or pull
-# requests, so nothing else is granted.
+# contents: write — the finalize CLI commits and pushes the lesson + history
+#   record using the checkout's own credentials.
+# actions: write — the final step dispatches the separate Pages deploy workflow
+#   (see the "Deploy the website" step for why this is necessary).
+# Nothing here reads issues or pull requests, so nothing else is granted.
 permissions:
   contents: write
+  actions: write
 
 # One run at a time. Never cancel a run in progress: it may already have
 # committed the day's lesson and be partway through pushing it, and there is no
@@ -184,3 +187,23 @@ jobs:
         # step neither inspects nor second-guesses the result.
         if: steps.prepare.outputs.kind == 'generate'
         run: node dist/src/cli/finalize.js "${{ steps.prepare.outputs.task_file }}"
+
+      - name: Deploy the website
+        # A push made with this job's GITHUB_TOKEN does NOT trigger another
+        # workflow's `push` event — GitHub suppresses that to prevent recursion —
+        # so the finalize commit would never reach the Pages site on its own.
+        # Dispatch the separate Pages workflow explicitly instead;
+        # `workflow_dispatch` is the sanctioned exception that GITHUB_TOKEN may
+        # trigger. This only fires the deploy — it does not wait on it or read its
+        # result (the site never gates a day's completion; docs/architecture.md §10).
+        #
+        # Placed after finalize and — like the steps above, which carry no
+        # always() — reached only when every prior step succeeded, so the deploy
+        # is dispatched only after the canonical commit has been pushed. A failed
+        # generate, accept, commit, or push skips it. If the dispatch call itself
+        # fails, this step exits non-zero and the job fails rather than silently
+        # skipping the deploy.
+        if: steps.prepare.outputs.kind == 'generate'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh workflow run pages.yml --ref main

@@ -508,9 +508,17 @@ output, with its own `package.json`) and the `pages.yml` workflow, not here.
   `lessons/**/*.md` — through `parseLesson` — at **build time** and emits static
   HTML. It never writes back to Git and holds no state of its own.
 - Hosted on **GitHub Pages**.
-- Built and deployed by a **separate workflow**, triggered by commits to canonical
-  content. It is not a step of the daily pipeline, and the daily pipeline does not
-  wait on it, invoke it, or observe its result. A failed or slow site build never
+- Built and deployed by a **separate workflow** (`pages.yml`), in its own run. It is
+  never a step of the daily pipeline. Two things trigger it: a `push` to `main`
+  (human pushes and merged PRs), and a `workflow_dispatch` that the daily lesson
+  workflow fires **after** its lesson commit has been pushed. The dispatch is
+  required because a push made with the daily job's `GITHUB_TOKEN` does **not**
+  trigger another workflow's `push` event — GitHub suppresses that to prevent
+  recursion — so the bot's canonical commit would otherwise never reach the site.
+  The daily pipeline only fires the dispatch; it does not wait on the build or
+  observe its result. Because the dispatch runs only after the canonical commit +
+  push has succeeded, the projection deployment always **follows** durable
+  completion and never precedes it, and a failed or slow site build still never
   affects Stage 1 completion (§6, §8).
 - **Mobile-first**, and installable to the iPhone home screen: a web app manifest,
   icons, and `display: standalone`. That is the whole of the installability story
