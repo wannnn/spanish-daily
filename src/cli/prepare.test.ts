@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { after, before, describe, it } from 'node:test';
 import { promisify } from 'node:util';
 
+import { LESSON_SCHEMA_VERSION, renderFrontmatter } from '../domain/lesson.js';
 import { VOCABULARY_PATH } from '../pipeline/prepare.js';
 import { HISTORY_PATH } from '../pipeline/finalize.js';
 import { runPrepare, type CliOutput } from './prepare.js';
@@ -81,6 +82,13 @@ describe('runPrepare — output', () => {
         date: '2026-07-18',
         lessonSchemaVersion: 1,
         targetPath: 'lessons/2026/2026-07-18-w0001.md',
+        frontmatter: renderFrontmatter({
+          id: 'w0001',
+          word: 'hablar',
+          pos: 'verb',
+          date: '2026-07-18',
+          lessonSchemaVersion: LESSON_SCHEMA_VERSION,
+        }),
       },
     });
     assert.deepEqual(stderr, []);

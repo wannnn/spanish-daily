@@ -94,9 +94,11 @@ Chinese strings given below.
 ### Frontmatter
 
 The canonical lesson document carries a minimal YAML frontmatter block for
-traceability and idempotent republishing. Its values are supplied by the
-pipeline; the generator writes them out exactly as given and never invents them
-(see §5, Output constraints):
+traceability and idempotent republishing. Its **canonical byte form is decided
+by the pipeline**, not the generator: the pipeline serializes the whole block —
+field order, and how each value is quoted — with the one canonical renderer and
+hands it to the generator, which copies it verbatim and never rebuilds or
+re-serializes it (see §5, Output constraints):
 
 ```
 ---
@@ -107,6 +109,13 @@ date: 2026-07-16
 lesson_schema_version: 1
 ---
 ```
+
+Whether `word` is written bare or double-quoted is part of that canonical
+serialization, and it is the renderer's decision alone. Most words are bare, as
+`hablar` above. A word a YAML reader would otherwise resolve to a non-string is
+double-quoted so it round-trips as itself — for example `word: "no"` and
+`word: "y"`, which bare would parse as the boolean `false` and `true`. The
+generator does not judge this; it copies the block the pipeline provides.
 
 `date` is the Asia/Taipei date the lesson was generated for (see the timezone rule
 in `docs/architecture.md`). The frontmatter carries no teaching content; the lesson body
@@ -277,11 +286,14 @@ whatever makes a lesson good has to come from the contract and the prompt.
 - The generator writes **one complete canonical lesson document**: the
   frontmatter of §2 followed by the five fixed sections of §2, in order. It
   writes the whole file, not a fragment handed back for assembly.
-- The frontmatter values are **supplied to the generator**, not chosen by it.
-  `id`, `word`, `pos`, `date`, and `lesson_schema_version` come from the task
-  context the pipeline prepares; the generator copies them exactly. It must not
-  invent, alter, or omit any of them — consistent with §1, where `id` is
-  correlation metadata rather than a generation input.
+- The frontmatter is **supplied to the generator as a finished, canonical
+  block**, not assembled by it. The pipeline serializes the whole block —
+  fences, field order, and how each value is quoted — with the one canonical
+  renderer and puts it in the task context; the generator copies it byte-for-byte
+  and must not rebuild, reorder, re-serialize, or re-quote it, nor invent, alter,
+  or omit any value. This is why a value like `no` or `y` cannot be mis-written:
+  the generator never decides how a YAML scalar is spelled (consistent with §1,
+  where the metadata is not the generator's to invent).
 - The document is written at exactly the one path the task context names, and no
   other file is touched.
 - Complete conjugation tables for verbs; representative examples per §3.

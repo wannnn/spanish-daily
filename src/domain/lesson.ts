@@ -74,6 +74,33 @@ export class LessonValidationError extends Error {
 }
 
 /**
+ * Render a lesson's canonical frontmatter — the two `---` fences and the
+ * metadata between them, in canonical field order, with `word` serialized by
+ * the one encoder (`encodeWord`). No trailing newline: the caller joins it to
+ * the body.
+ *
+ * This is the single source of the frontmatter's byte form. It exists as its
+ * own function so the generation pipeline can hand the generator this exact
+ * block to copy verbatim, rather than leaving the generator to serialize the
+ * YAML itself — which is where a bare `word: no` (a YAML boolean, not the
+ * string) slipped in. Whether a word is written bare or quoted is decided here
+ * and nowhere else.
+ */
+export function renderFrontmatter(metadata: LessonMetadata): string {
+  assertMetadata(metadata);
+
+  const lines = [
+    `id: ${metadata.id}`,
+    `word: ${encodeWord(metadata.word)}`,
+    `pos: ${metadata.pos}`,
+    `date: ${metadata.date}`,
+    `lesson_schema_version: ${metadata.lessonSchemaVersion}`,
+  ];
+
+  return `${FENCE}\n${lines.join('\n')}\n${FENCE}`;
+}
+
+/**
  * Render a lesson to its canonical document form.
  *
  * Deterministic: the same lesson always produces byte-identical output. The
@@ -81,7 +108,7 @@ export class LessonValidationError extends Error {
  * with exactly one newline.
  */
 export function renderLesson(lesson: Lesson): string {
-  assertMetadata(lesson.metadata);
+  const frontmatter = renderFrontmatter(lesson.metadata);
 
   // Line endings are normalized here, not only on the way in: the rendered
   // document is the canonical artifact, so the same lesson must produce the
@@ -89,15 +116,7 @@ export function renderLesson(lesson: Lesson): string {
   const body = normalize(lesson.body);
   validateLessonBody(body);
 
-  const frontmatter = [
-    `id: ${lesson.metadata.id}`,
-    `word: ${encodeWord(lesson.metadata.word)}`,
-    `pos: ${lesson.metadata.pos}`,
-    `date: ${lesson.metadata.date}`,
-    `lesson_schema_version: ${lesson.metadata.lessonSchemaVersion}`,
-  ];
-
-  return `${FENCE}\n${frontmatter.join('\n')}\n${FENCE}\n\n${body}\n`;
+  return `${frontmatter}\n\n${body}\n`;
 }
 
 /**

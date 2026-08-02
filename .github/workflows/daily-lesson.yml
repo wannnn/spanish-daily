@@ -89,9 +89,13 @@ jobs:
           const lines = [`kind=${prepared.kind}`, `task_file=${taskFile}`];
 
           // The task is carried into the prompt as a value, so the generation
-          // step never has to read a file outside the working directory.
+          // step never has to read a file outside the working directory. The
+          // canonical frontmatter is surfaced on its own — the raw block the
+          // generator copies verbatim — so the prompt embeds it as text rather
+          // than as a JSON-escaped field the generator would have to decode.
           if (prepared.kind === 'generate') {
             lines.push('task<<TASK_JSON', JSON.stringify(prepared.task, null, 2), 'TASK_JSON');
+            lines.push('frontmatter<<FRONTMATTER_BLOCK', prepared.task.frontmatter, 'FRONTMATTER_BLOCK');
           }
 
           appendFileSync(process.env.GITHUB_OUTPUT, `${lines.join('\n')}\n`);
@@ -136,10 +140,21 @@ jobs:
 
             Write exactly one file, at the path given by `targetPath`, and
             nothing else. It must be a complete canonical lesson document: the
-            YAML frontmatter followed by the five sections. Copy `id`, `word`,
-            `pos`, `date`, and `lessonSchemaVersion` into the frontmatter
-            verbatim — as `lesson_schema_version` — exactly as they appear
-            above. Do not invent, alter, or omit any of them.
+            frontmatter block below, then the five sections.
+
+            The pipeline has already serialized the frontmatter. Begin the file
+            with this exact block, copied byte-for-byte — do not rebuild,
+            reorder, re-indent, add to it, or change how any value is quoted.
+            The word may be written in double quotes (for example `word: "no"`
+            or `word: "y"`); if it is, keep it exactly that way. Serializing the
+            frontmatter is the pipeline's job, never yours: copy this block,
+            never reconstruct it from the task values above.
+
+            ```
+            ${{ steps.prepare.outputs.frontmatter }}
+            ```
+
+            Then leave one blank line and write the five sections.
 
             Teach `word`, in its canonical dictionary form. Explanations and
             headings are in Traditional Chinese; the Spanish word,

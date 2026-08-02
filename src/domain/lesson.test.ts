@@ -7,6 +7,7 @@ import {
   LessonValidationError,
   lessonRelativePath,
   parseLesson,
+  renderFrontmatter,
   renderLesson,
   validateLessonBody,
 } from './lesson.js';
@@ -200,6 +201,51 @@ describe('renderLesson — word encoding', () => {
       assert.equal(parseLesson(document).metadata.word, word);
     });
   }
+});
+
+describe('renderFrontmatter', () => {
+  it('is exactly the frontmatter portion of the rendered document', () => {
+    // The one serialization source: what the pipeline hands the generator must
+    // be byte-identical to the head of the canonical document, so a copied
+    // block passes acceptance unchanged.
+    const block = renderFrontmatter(metadata());
+    const document = renderLesson(lesson());
+
+    assert.ok(document.startsWith(`${block}\n\n`));
+  });
+
+  it('writes an ordinary word bare', () => {
+    assert.equal(
+      renderFrontmatter(metadata()),
+      [
+        '---',
+        'id: w0001',
+        'word: hablar',
+        'pos: verb',
+        'date: 2026-07-18',
+        `lesson_schema_version: ${LESSON_SCHEMA_VERSION}`,
+        '---',
+      ].join('\n'),
+    );
+  });
+
+  for (const word of ['no', 'y']) {
+    it(`double-quotes "${word}", a YAML boolean token`, () => {
+      const line = renderFrontmatter(metadata({ word }))
+        .split('\n')
+        .find((l) => l.startsWith('word:'));
+
+      assert.equal(line, `word: "${word}"`);
+    });
+  }
+
+  it('ends without a trailing newline, so the caller joins it to the body', () => {
+    assert.ok(!renderFrontmatter(metadata()).endsWith('\n'));
+  });
+
+  it('rejects metadata that violates the lesson contract', () => {
+    assertRejects(() => renderFrontmatter(metadata({ id: 'nope' })), '"id"');
+  });
 });
 
 describe('parseLesson — round trip', () => {

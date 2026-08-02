@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { after, before, describe, it } from 'node:test';
 import { promisify } from 'node:util';
 
-import { LESSON_SCHEMA_VERSION, renderLesson } from '../domain/lesson.js';
+import { LESSON_SCHEMA_VERSION, renderFrontmatter, renderLesson } from '../domain/lesson.js';
 import {
   LessonAcceptanceError,
   type LessonGenerationTask,
@@ -28,6 +28,13 @@ const TASK: LessonGenerationTask = {
   date: '2026-07-18',
   lessonSchemaVersion: LESSON_SCHEMA_VERSION,
   targetPath: 'lessons/2026/2026-07-18-w0001.md',
+  frontmatter: renderFrontmatter({
+    id: 'w0001',
+    word: 'hablar',
+    pos: 'verb',
+    date: '2026-07-18',
+    lessonSchemaVersion: LESSON_SCHEMA_VERSION,
+  }),
 };
 
 const BODY = [

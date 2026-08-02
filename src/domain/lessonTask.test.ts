@@ -1,7 +1,12 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { LESSON_SCHEMA_VERSION, LessonValidationError, renderLesson } from './lesson.js';
+import {
+  LESSON_SCHEMA_VERSION,
+  LessonValidationError,
+  renderFrontmatter,
+  renderLesson,
+} from './lesson.js';
 import {
   LessonAcceptanceError,
   LessonPreparationError,
@@ -94,6 +99,13 @@ describe('prepareLesson — generate', () => {
       date: TODAY,
       lessonSchemaVersion: LESSON_SCHEMA_VERSION,
       targetPath: 'lessons/2026/2026-07-18-w0001.md',
+      frontmatter: renderFrontmatter({
+        id: 'w0001',
+        word: 'hablar',
+        pos: 'verb',
+        date: TODAY,
+        lessonSchemaVersion: LESSON_SCHEMA_VERSION,
+      }),
     });
   });
 
@@ -109,11 +121,44 @@ describe('prepareLesson — generate', () => {
     assert.equal(task.targetPath, 'lessons/2031/2031-01-09-w0042.md');
   });
 
+  it('carries the canonical frontmatter block, an ordinary word left bare', () => {
+    const task = taskFor([entry('w0001', 1, 'hablar', 'verb')], []);
+
+    assert.ok(task.frontmatter.includes('\nword: hablar\n'));
+    assert.equal(task.frontmatter.startsWith('---\n'), true);
+    assert.equal(task.frontmatter.endsWith('\n---'), true);
+  });
+
+  for (const word of ['no', 'y']) {
+    it(`double-quotes "${word}" in the task frontmatter, so it never reaches the file bare`, () => {
+      const task = taskFor([entry('w0014', 1, word, 'adverb')], []);
+      const line = task.frontmatter.split('\n').find((l) => l.startsWith('word:'));
+
+      assert.equal(line, `word: "${word}"`);
+    });
+  }
+
+  it('serializes the frontmatter with the one renderer, not a second copy', () => {
+    const task = taskFor([entry('w0014', 1, 'no', 'adverb')], []);
+
+    assert.equal(
+      task.frontmatter,
+      renderFrontmatter({
+        id: 'w0014',
+        word: 'no',
+        pos: 'adverb',
+        date: TODAY,
+        lessonSchemaVersion: LESSON_SCHEMA_VERSION,
+      }),
+    );
+  });
+
   it('carries no field beyond the generation contract', () => {
     const task = taskFor([entry('w0001', 7, 'hablar')], []);
 
     assert.deepEqual(Object.keys(task).sort(), [
       'date',
+      'frontmatter',
       'id',
       'lessonSchemaVersion',
       'pos',
@@ -525,14 +570,47 @@ describe('acceptGeneratedLesson — canonical form', () => {
   });
 });
 
+describe('acceptGeneratedLesson — frontmatter from the task', () => {
+  // The whole point of serializing the frontmatter in the task: a file built by
+  // pasting the task's own block passes acceptance, even for words a YAML reader
+  // would otherwise mangle. Before this, the generator hand-wrote `word: no`
+  // bare and the day failed here two days running.
+  for (const word of ['no', 'y', 'hablar']) {
+    it(`accepts a file that begins with the task frontmatter for "${word}"`, () => {
+      const task = taskFor([entry('w0014', 1, word, 'adverb')], []);
+      const document = `${task.frontmatter}\n\n${BODY}\n`;
+
+      const accepted = acceptGeneratedLesson(task, task.targetPath, document);
+
+      assert.equal(accepted.metadata.word, word);
+    });
+  }
+
+  for (const word of ['no', 'y']) {
+    it(`still rejects "${word}" written bare instead of copied from the block`, () => {
+      const task = taskFor([entry('w0014', 1, word, 'adverb')], []);
+      const bare = `${task.frontmatter}\n\n${BODY}\n`.replace(`word: "${word}"`, `word: ${word}`);
+
+      assert.throws(() => acceptGeneratedLesson(task, task.targetPath, bare), {
+        name: 'LessonAcceptanceError',
+        message: /not a canonical plain scalar/,
+      });
+    });
+  }
+});
+
 describe('parseGenerationTask', () => {
-  const valid = {
+  const validMetadata = {
     id: 'w0001',
     word: 'hablar',
-    pos: 'verb',
+    pos: 'verb' as Pos,
     date: TODAY,
     lessonSchemaVersion: LESSON_SCHEMA_VERSION,
+  };
+  const valid = {
+    ...validMetadata,
     targetPath: 'lessons/2026/2026-07-18-w0001.md',
+    frontmatter: renderFrontmatter(validMetadata),
   };
 
   it('accepts a task the preparation step produced', () => {
@@ -608,6 +686,28 @@ describe('parseGenerationTask', () => {
   it('rejects a targetPath that escapes the lessons directory', () => {
     assert.throws(
       () => parseGenerationTask({ ...valid, targetPath: '../../etc/passwd' }),
+      LessonPreparationError,
+    );
+  });
+
+  it('rejects a frontmatter block the metadata does not derive', () => {
+    // Like the path, the frontmatter is re-derived, not believed: a task whose
+    // frontmatter has drifted from its metadata is rejected before generation.
+    assert.throws(
+      () => parseGenerationTask({ ...valid, frontmatter: valid.frontmatter.replace('hablar', 'no') }),
+      { name: 'LessonPreparationError', message: /serializes it exactly one way/ },
+    );
+  });
+
+  it('rejects a frontmatter that is a non-canonical serialization of the same metadata', () => {
+    // A `word: "hablar"` block decodes to the right word but is not what the
+    // renderer writes, so it is not the canonical block and is refused.
+    assert.throws(
+      () =>
+        parseGenerationTask({
+          ...valid,
+          frontmatter: valid.frontmatter.replace('word: hablar', 'word: "hablar"'),
+        }),
       LessonPreparationError,
     );
   });

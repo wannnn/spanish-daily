@@ -23,6 +23,7 @@ import {
   LessonValidationError,
   lessonRelativePath,
   parseLesson,
+  renderFrontmatter,
   renderLesson,
 } from './lesson.js';
 import { selectWord } from './selection.js';
@@ -58,6 +59,16 @@ export type LessonGenerationTask = {
   readonly lessonSchemaVersion: number;
   /** The one repository-relative POSIX path the lesson may be written to. */
   readonly targetPath: string;
+  /**
+   * The canonical frontmatter block the generated file must begin with,
+   * byte-for-byte — the two `---` fences and the metadata between them.
+   *
+   * Serialized here, by the one renderer (`renderFrontmatter`), so the
+   * generator copies it rather than deciding for itself how a YAML scalar is
+   * written. That decision is exactly what let a bare `word: no` — a YAML
+   * boolean, not the string — reach the acceptance gate and fail there.
+   */
+  readonly frontmatter: string;
 };
 
 /**
@@ -89,7 +100,7 @@ export class LessonAcceptanceError extends Error {
 const TASK_METADATA_FIELDS = ['id', 'word', 'pos', 'date', 'lessonSchemaVersion'] as const;
 
 /** Every field a task carries, and no others. */
-const TASK_FIELDS = [...TASK_METADATA_FIELDS, 'targetPath'] as const;
+const TASK_FIELDS = [...TASK_METADATA_FIELDS, 'targetPath', 'frontmatter'] as const;
 
 /**
  * Validate a task that has come back from outside the process.
@@ -116,7 +127,7 @@ export function parseGenerationTask(raw: unknown): LessonGenerationTask {
 
   assertExactFields(value, TASK_FIELDS, 'A generation task');
 
-  for (const field of ['id', 'word', 'pos', 'date', 'targetPath'] as const) {
+  for (const field of ['id', 'word', 'pos', 'date', 'targetPath', 'frontmatter'] as const) {
     if (typeof value[field] !== 'string') {
       throw new LessonPreparationError(
         `A generation task's ${JSON.stringify(field)} must be a string, ` +
@@ -161,7 +172,21 @@ export function parseGenerationTask(raw: unknown): LessonGenerationTask {
     );
   }
 
-  return { ...metadata, targetPath };
+  // Like the path, the frontmatter is re-derived rather than believed: it is not
+  // a separate choice but the one canonical serialization of the metadata, and
+  // the generator is trusted to copy it, not to reconstruct it (metadata is
+  // already valid, so this cannot throw).
+  const frontmatter = value['frontmatter'] as string;
+  const derivedFrontmatter = renderFrontmatter(metadata);
+  if (frontmatter !== derivedFrontmatter) {
+    throw new LessonPreparationError(
+      `A generation task's "frontmatter" is not the canonical block its metadata ` +
+        `derives. The frontmatter is not a separate choice — the pipeline ` +
+        'serializes it exactly one way, and the generator copies that.',
+    );
+  }
+
+  return { ...metadata, targetPath, frontmatter };
 }
 
 /**
@@ -312,10 +337,16 @@ export function prepareLesson(
       };
 
       // `order` is deliberately dropped here: it decides which word is taught,
-      // never what the lesson says (docs/lesson-spec.md §1).
+      // never what the lesson says (docs/lesson-spec.md §1). The frontmatter is
+      // serialized now, by the one renderer, so the generator copies canonical
+      // bytes instead of re-deriving them.
       return {
         kind: 'generate',
-        task: { ...metadata, targetPath: lessonRelativePath(metadata) },
+        task: {
+          ...metadata,
+          targetPath: lessonRelativePath(metadata),
+          frontmatter: renderFrontmatter(metadata),
+        },
       };
     }
   }

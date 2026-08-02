@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { after, before, describe, it } from 'node:test';
 import { promisify } from 'node:util';
 
-import { LESSON_SCHEMA_VERSION } from '../domain/lesson.js';
+import { LESSON_SCHEMA_VERSION, renderFrontmatter } from '../domain/lesson.js';
 import { HISTORY_PATH } from './finalize.js';
 import { DailyPrepareError, VOCABULARY_PATH, prepareDailyLesson } from './prepare.js';
 
@@ -81,6 +81,13 @@ describe('prepareDailyLesson — deciding the day', () => {
         date: '2026-07-18',
         lessonSchemaVersion: LESSON_SCHEMA_VERSION,
         targetPath: 'lessons/2026/2026-07-18-w0001.md',
+        frontmatter: renderFrontmatter({
+          id: 'w0001',
+          word: 'hablar',
+          pos: 'verb',
+          date: '2026-07-18',
+          lessonSchemaVersion: LESSON_SCHEMA_VERSION,
+        }),
       },
     });
   });
